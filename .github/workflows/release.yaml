@@ -8,7 +8,7 @@ on:
         description: "Select project to release"
         required: true
         default: forgo
-        options: &valid-projects
+        options:
           - forgo
           - forgo-lib-cli
       version:
