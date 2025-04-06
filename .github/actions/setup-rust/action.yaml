@@ -1,0 +1,42 @@
+name: "Setup Rust Steps"
+description: "Sets up Rust toolchain, caches, and installs cargo-make"
+inputs:
+  cargo_make_version:
+    description: "Version of cargo-make to install"
+    required: false
+    default: "0.37.24"
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Rust stable toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+        components: clippy, rustfmt
+
+    - name: Cache Cargo registry, git, and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache Cargo bin (including cargo-make)
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin
+        key: cargo-bin-${{ runner.os }}-cargo-make-${{ inputs.cargo_make_version }}
+
+    - name: Install cargo-make if not already installed
+      run: |
+        if ! command -v cargo-make > /dev/null; then
+          echo "Installing cargo-make..."
+          cargo install cargo-make --version ${{ inputs.cargo_make_version }}
+        else
+          echo "cargo-make is already installed."
+        fi

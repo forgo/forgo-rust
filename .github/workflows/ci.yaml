@@ -12,42 +12,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Rust stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          components: clippy, rustfmt
-
-      - name: Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache Cargo bin (including cargo-make)
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-cargo-make-0.37.24
-
-      - name: Install cargo-make if not already installed
-        run: |
-          if ! command -v cargo-make > /dev/null; then
-            echo "Installing cargo-make..."
-            cargo install cargo-make --version 0.37.24
-          else
-            echo "cargo-make is already installed."
-          fi
-
+      - name: Rust setup
+        uses: ./.github/actions/setup-rust
       - name: Run formatting check
         run: cargo make fmt-check
-
       - name: Run clippy check
         run: cargo make clippy-check
 
@@ -57,39 +25,8 @@ jobs:
       matrix:
         project: ["cli-utils", "cli-forgo"]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Rust stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          components: clippy, rustfmt
-
-      - name: Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache Cargo bin (including cargo-make)
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-cargo-make-0.37.24
-
-      - name: Install cargo-make if not already installed
-        run: |
-          if ! command -v cargo-make > /dev/null; then
-            echo "Installing cargo-make..."
-            cargo install cargo-make --version 0.37.24
-          else
-            echo "cargo-make is already installed."
-          fi
-
+      - name: Rust setup
+        uses: ./.github/actions/setup-rust
       - name: Run tests for ${{ matrix.project }}
         env:
           PROJECT: ${{ matrix.project }}
