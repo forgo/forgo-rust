@@ -30,6 +30,7 @@ runs:
         key: cargo-bin-${{ runner.os }}-cargo-make-${{ inputs.cargo_make_version }}
 
     - name: Install cargo-make if not already installed
+      shell: bash
       run: |
         if ! command -v cargo-make > /dev/null; then
           echo "Installing cargo-make..."
