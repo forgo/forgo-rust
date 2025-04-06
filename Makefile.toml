@@ -11,14 +11,24 @@ CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 [tasks.fmt-check]
 description = "Check code formatting using rustfmt"
 command = "cargo"
-args = ["fmt", "--", "--check"]
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.fmt-check-project]
+description = "Check code formatting using rustfmt"
+command = "cargo"
+args = ["fmt", "-p", "${PROJECT}", "--", "--check"]
 
 [tasks.clippy-check]
 description = "Run clippy to catch common mistakes, treating warnings as errors"
 command = "cargo"
 args = ["clippy", "--all", "--", "-D", "warnings"]
 
-[tasks.test-all]
+[tasks.clippy-check-project]
+description = "Run clippy to catch common mistakes, treating warnings as errors"
+command = "cargo"
+args = ["clippy", "-p", "${PROJECT}", "--", "-D", "warnings"]
+
+[tasks.test]
 description = "Run all tests across the workspace"
 command = "cargo"
 args = ["test", "--all"]
@@ -27,11 +37,3 @@ args = ["test", "--all"]
 description = "Run tests for a specific project (set PROJECT env variable)"
 command = "cargo"
 args = ["test", "-p", "${PROJECT}"]
-
-[tasks.ci]
-description = "Run formatting check, linting, and tests (CI workflow)"
-dependencies = [
-    "fmt-check",
-    "clippy-check",
-    "test-all"
-]

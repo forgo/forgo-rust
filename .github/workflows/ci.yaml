@@ -11,15 +11,22 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: ["cli-utils", "cli-forgo"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Rust setup
         uses: ./.github/actions/setup-rust
       - name: Run formatting check
-        run: cargo make fmt-check
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: cargo make fmt-check-project
       - name: Run clippy check
-        run: cargo make clippy-check
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: cargo make clippy-check-project
 
   test:
     runs-on: ubuntu-latest
