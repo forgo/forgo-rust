@@ -12,6 +12,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Rust setup
         uses: ./.github/actions/setup-rust
       - name: Run formatting check
@@ -25,6 +27,8 @@ jobs:
       matrix:
         project: ["cli-utils", "cli-forgo"]
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Rust setup
         uses: ./.github/actions/setup-rust
       - name: Run tests for ${{ matrix.project }}
