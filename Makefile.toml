@@ -1,0 +1,34 @@
+# Used by `cargo-make`
+# https://github.com/sagiegurari/cargo-make
+# e.g. - `cargo make ci`
+
+[env]
+# Automatically Extend Workspace Makefile
+# IOW - recognize tasks in a workspace context
+# https://github.com/sagiegurari/cargo-make#usage-workspace-extend
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+
+# Define any environment variables you might need here.
+
+[tasks.fmt-check]
+description = "Check code formatting using rustfmt"
+command = "cargo"
+args = ["fmt", "--", "--check"]
+
+[tasks.clippy-check]
+description = "Run clippy to catch common mistakes, treating warnings as errors"
+command = "cargo"
+args = ["clippy", "--all", "--", "-D", "warnings"]
+
+[tasks.test-all]
+description = "Run all tests across the workspace"
+command = "cargo"
+args = ["test", "--all"]
+
+[tasks.ci]
+description = "Run formatting check, linting, and tests (CI workflow)"
+dependencies = [
+    "fmt-check",
+    "clippy-check",
+    "test-all"
+]

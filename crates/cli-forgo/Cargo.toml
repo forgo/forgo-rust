@@ -1,0 +1,11 @@
+[package]
+name = "cli-forgo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cli-utils = { path = "../cli-utils" }
+
+[[bin]]
+name = "forgo"
+path = "src/main.rs"
