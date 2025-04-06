@@ -154,15 +154,12 @@ This repository includes a GitHub Actions workflow located at `.github/workflows
 
 4. **Clean Artifacts:**
 
-Remove generated artifacts from the target directory, effectively clearing the build cache for the project or workspace.
+   Remove generated artifacts from the target directory, effectively clearing the build cache for the project or workspace.
 
-```bash
-cargo clean
-```
+   ```bash
+   cargo clean
+   ```
 
-Follow these instructions to develop, test, and maintain your Rust projects efficiently. Happy coding!
+## TODOs:
 
-```
-
-This file should now maintain full coherence when viewed in any text editor or GitHub. Enjoy building your Rust projects!
-```
+- [] test caching of GitHub workflow `ci.yaml`
