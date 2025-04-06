@@ -4,10 +4,10 @@ A monorepo of Rust projects.
 
 ## Projects Overview
 
-| Project     | Type       | Description                                                                           | Location           |
-| ----------- | ---------- | ------------------------------------------------------------------------------------- | ------------------ |
-| `cli-utils` | Library    | A reusable library of utilities for CLI applications (e.g., device code flow)         | `crates/cli-utils` |
-| `cli-forgo` | Executable | A CLI tool that leverages `cli-utils` to implement device code flow (binary: `forgo`) | `crates/cli-forgo` |
+| Project         | Type       | Description                                                                      | Location               |
+| --------------- | ---------- | -------------------------------------------------------------------------------- | ---------------------- |
+| `forgo-lib-cli` | Library    | A library to help build common features into your CLI (e.g. - device code flow). | `crates/forgo-lib-cli` |
+| `forgo`         | Executable | A CLI tool for doing awesome things. (binary: `forgo`)                           | `crates/forgo`         |
 
 ## Repository Structure
 
@@ -17,11 +17,12 @@ forgo-rust/
 ├── rust-toolchain.toml # Toolchain config
 ├── .gitignore          # Git ignore file
 ├── README.md           # Project readme
+├── ORIGIN.md           # How this project was created
 ├── crates/
-│   ├── cli-forgo/      # `forgo` CLI tool executable
+│   ├── forgo/          # `forgo` CLI tool executable
 │   │   ├── Cargo.toml
 │   │   └── src/
-│   └── cli-utils/      # Reusable CLI utilities library
+│   └── forgo-lib-cli/      # Reusable CLI utilities library
 │       ├── Cargo.toml
 │       └── src/
 └── .github/

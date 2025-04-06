@@ -5,6 +5,14 @@ inputs:
     description: "Version of cargo-make to install"
     required: false
     default: "0.37.24"
+  toml_cli_version:
+    description: "Version of toml-cli to install"
+    required: false
+    default: "0.2.3"
+  sem_tool_version:
+    description: "Version of sem-tool to install"
+    required: false
+    default: "0.1.8"
 runs:
   using: "composite"
   steps:
@@ -23,18 +31,38 @@ runs:
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Cache Cargo bin (including cargo-make)
+    - name: Cache Cargo bin (including `cargo-make` and `toml-cli`)
       uses: actions/cache@v4
       with:
         path: ~/.cargo/bin
-        key: cargo-bin-${{ runner.os }}-cargo-make-${{ inputs.cargo_make_version }}
+        key: cargo-bin-${{ runner.os }}-cargo-make-${{ inputs.cargo_make_version }}-${{ inputs.toml_cli_version }}-${{ inputs.sem_tool_version }}
 
     - name: Install cargo-make if not already installed
       shell: bash
       run: |
         if ! command -v cargo-make > /dev/null; then
           echo "Installing cargo-make..."
-          cargo install cargo-make --version ${{ inputs.cargo_make_version }}
+          cargo install cargo-make --version ${{ inputs.cargo_make_version }} --locked
         else
           echo "cargo-make is already installed."
+        fi
+
+    - name: Install toml if not already installed
+      shell: bash
+      run: |
+        if ! command -v toml > /dev/null; then
+          echo "Installing toml..."
+          cargo install toml --version ${{ inputs.toml_cli_version }} --locked
+        else
+          echo "toml is already installed."
+        fi
+
+    - name: Install sem-tool if not already installed
+      shell: bash
+      run: |
+        if ! command -v sem-tool > /dev/null; then
+          echo "Installing sem-tool..."
+          cargo install sem-tool --version ${{ inputs.sem_tool_version }} --locked
+        else
+          echo "sem-tool is already installed."
         fi

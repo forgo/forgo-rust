@@ -3,12 +3,12 @@
 version = 4
 
 [[package]]
-name = "cli-forgo"
+name = "forgo"
 version = "0.1.0"
 dependencies = [
- "cli-utils",
+ "forgo-lib-cli",
 ]
 
 [[package]]
-name = "cli-utils"
+name = "forgo-lib-cli"
 version = "0.1.0"

@@ -1,0 +1,18 @@
+[package]
+name = "forgo"
+version = "0.1.0"
+edition = "2024"
+publish = true
+description = "A CLI tool for doing awesome things."
+license = "MIT"
+repository = "https://github.com/forgo/forgo-rust"
+keywords = ["cli", "tool", "command-line", "forgo"]
+categories = ["command-line-utilities"]
+
+
+[dependencies]
+forgo-lib-cli = { path = "../forgo-lib-cli" }
+
+[[bin]]
+name = "forgo"
+path = "src/main.rs"

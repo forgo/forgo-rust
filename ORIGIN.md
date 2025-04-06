@@ -1,82 +1,15 @@
-# How this repo was created...
+# How this repo was created
 
-## 1. Set Up Your Rust Toolchain
+- Used [rustup](https://rustup.rs/) to install Rust. It will help you manage toolchain versions.
+- Created a `rust-toolchain.toml` file in repo root to ensure everyone uses the same version.
+- Created the `forgo-rust` repo on GitHub
+  - Added a `.gitignore` based on the Rust template
+  - Chose a license like `MIT`
+- Created a root `Cargo.toml` to include workspace member projects
+- Create baseline projects for repo
 
-- **Install Rust**
-
-  Use [rustup](https://rustup.rs/) to install Rust. It will help you manage toolchain versions.
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-- **Pin Your Toolchain (Optional but Recommended)**
-
-  Create a `rust-toolchain.toml` file in your repo root to ensure everyone uses the same version. For example:
-
-```toml
-[toolchain]
-channel = "stable" # or pin to a specific version if desired
-components = ["clippy", "rustfmt"]
-```
-
----
-
-## 2. Create and Initialize Your GitHub Repository
-
-- **Create a New Repo on GitHub**
-
-  - Name it something like `forgo-rust`.
-  - Add a README file
-  - Add `.gitignore` based on the Rust template
-  - Choose a license like `MIT`
-
-- **Clone It Locally:**
-
-```bash
-git clone git@github.com:forgo/forgo-rust.git
-cd forgo-rust
-```
-
----
-
-## 3. Establish a Cargo Workspace for the Monorepo\*\*
-
-A Cargo workspace lets you manage multiple Rust crates (projects) under one repository.
-
-- **Create a Root `Cargo.toml`:**
-
-  In the root directory, add a `Cargo.toml` file with the following contents:
-
-```toml
-[workspace]
-members = [
-    "crates/project1",
-    "crates/project2",
-    # add additional projects as you create them
-]
-```
-
-- **Directory Structure Suggestion:**
-
-```bash
-forgo-rust/
-├── Cargo.toml          # Workspace manifest
-├── rust-toolchain.toml # Toolchain config
-├── .gitignore          # Git ignore file
-├── README.md           # Project readme
-├── crates/
-│   ├── project1/
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   └── project2/
-│       ├── Cargo.toml
-│       └── src/
-└── .github/
-    └── workflows/
-         └── ci.yml   # GitHub Actions workflow
-
-```
+  - `cargo new forgo-lib-cli --lib` (use `--lib` for a library)
+  - `cargo new forgo --bin` (use `--bin` for an executable)
 
 - **Create Your First Crate:**
 

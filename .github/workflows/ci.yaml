@@ -1,5 +1,3 @@
-# TODO: https://docs.github.com/en/actions/use-cases-and-examples/building-and-testing/building-and-testing-rust
-
 name: CI
 
 on:
@@ -13,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ["cli-utils", "cli-forgo"]
+        project: ["forgo-lib-cli", "forgo"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ["cli-utils", "cli-forgo"]
+        project: ["forgo-lib-cli", "forgo"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
