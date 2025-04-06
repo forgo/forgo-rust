@@ -8,8 +8,6 @@
 # https://github.com/sagiegurari/cargo-make#usage-workspace-extend
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 
-# Define any environment variables you might need here.
-
 [tasks.fmt-check]
 description = "Check code formatting using rustfmt"
 command = "cargo"
@@ -24,6 +22,11 @@ args = ["clippy", "--all", "--", "-D", "warnings"]
 description = "Run all tests across the workspace"
 command = "cargo"
 args = ["test", "--all"]
+
+[tasks.test-project]
+description = "Run tests for a specific project (set PROJECT env variable)"
+command = "cargo"
+args = ["test", "-p", "${PROJECT}"]
 
 [tasks.ci]
 description = "Run formatting check, linting, and tests (CI workflow)"
