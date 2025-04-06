@@ -1,4 +1,4 @@
-name: "Setup Rust Steps"
+name: "Setup Rust"
 description: "Sets up Rust toolchain, caches, and installs cargo-make"
 inputs:
   cargo_make_version:
