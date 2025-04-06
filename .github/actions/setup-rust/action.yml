@@ -47,12 +47,12 @@ runs:
           echo "cargo-make is already installed."
         fi
 
-    - name: Install toml if not already installed
+    - name: Install toml-cli if not already installed
       shell: bash
       run: |
         if ! command -v toml > /dev/null; then
           echo "Installing toml..."
-          cargo install toml --version ${{ inputs.toml_cli_version }} --locked
+          cargo install toml-cli --version ${{ inputs.toml_cli_version }} --locked
         else
           echo "toml is already installed."
         fi
