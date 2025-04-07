@@ -55,7 +55,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.event.inputs.project }}/${{ github.event.inputs.version }}"
-          TITLE="${TAG}"
-          gh release create "${TAG}" --title "${TITLE}" --generate-notes
+          TAG="${{ github.event.inputs.project }}@${{ github.event.inputs.version }}"
+          gh release create "${TAG}" --title "${TAG}" --generate-notes
         shell: bash
