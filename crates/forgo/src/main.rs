@@ -1,3 +1,6 @@
+use forgo_lib_cli::add;
+
 fn main() {
-    println!("Hello, world!");
+    let sum = add(2, 3);
+    println!("Yo, world! 2 + 3 = {}", sum);
 }

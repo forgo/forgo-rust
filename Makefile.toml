@@ -1,3 +1,17 @@
+# =============================================================================
+# Development Shortcuts
+#
+# Note: These watch commands bypass cargo-make in order to hot-reload changes.
+#
+# For continuous development (binary):
+#   Run: `cargo watch -x "run -p forgo"`
+#
+# For continuous testing (library + binary):
+#   Run: `cargo watch -x "test -p forgo-lib-cli"`
+#
+# =============================================================================
+
+
 # Used by `cargo-make`
 # https://github.com/sagiegurari/cargo-make
 # e.g. - `cargo make ci`
@@ -16,7 +30,7 @@ args = ["fmt", "--all", "--", "--check"]
 [tasks.fmt-check-project]
 description = "Check code formatting using rustfmt"
 command = "cargo"
-args = ["fmt", "-p", "${PROJECT}", "--", "--check"]
+args = ["fmt", "-p", "${@}", "--", "--check"]
 
 [tasks.clippy-check]
 description = "Run clippy to catch common mistakes, treating warnings as errors"
@@ -26,7 +40,7 @@ args = ["clippy", "--all", "--", "-D", "warnings"]
 [tasks.clippy-check-project]
 description = "Run clippy to catch common mistakes, treating warnings as errors"
 command = "cargo"
-args = ["clippy", "-p", "${PROJECT}", "--", "-D", "warnings"]
+args = ["clippy", "-p", "${@}", "--", "-D", "warnings"]
 
 [tasks.test]
 description = "Run all tests across the workspace"
@@ -36,4 +50,9 @@ args = ["test", "--all"]
 [tasks.test-project]
 description = "Run tests for a specific project (set PROJECT env variable)"
 command = "cargo"
-args = ["test", "-p", "${PROJECT}"]
+args = ["test", "-p", "${@}"]
+
+[tasks.run]
+description = "Build and run a specified project"
+command = "cargo"
+args = ["run", "-p", "${@}"]
