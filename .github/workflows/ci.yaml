@@ -11,32 +11,26 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ["forgo-lib-cli", "forgo"]
+        project: ["forgo_lib_cli", "forgo"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Rust setup
         uses: ./.github/actions/setup-rust
       - name: Run formatting check
-        env:
-          PROJECT: ${{ matrix.project }}
-        run: cargo make fmt-check-project
+        run: cargo make fmt-check-project ${{ matrix.project }}
       - name: Run clippy check
-        env:
-          PROJECT: ${{ matrix.project }}
-        run: cargo make clippy-check-project
+        run: cargo make clippy-check-project ${{ matrix.project }}
 
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ["forgo-lib-cli", "forgo"]
+        project: ["forgo_lib_cli", "forgo"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Rust setup
         uses: ./.github/actions/setup-rust
       - name: Run tests for ${{ matrix.project }}
-        env:
-          PROJECT: ${{ matrix.project }}
-        run: cargo make test-project
+        run: cargo make test-project ${{ matrix.project }}

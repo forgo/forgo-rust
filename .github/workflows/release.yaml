@@ -33,25 +33,28 @@ jobs:
       - name: Update ${{ github.event.inputs.project }}'s Cargo.toml package version
         run: cargo=$(toml set crates/${{ github.event.inputs.project }}/Cargo.toml package.version "${{ github.event.inputs.version }}") && echo "$cargo" > crates/${{ github.event.inputs.project }}/Cargo.toml
 
-      - name: Validate input version aligns with package version
+      - name: Validate ${{ github.event.inputs.project }}'s Cargo.toml package version aligns with input version
         run: test "$(toml get -r crates/${{ github.event.inputs.project }}/Cargo.toml package.version)" = "${{ github.event.inputs.version }}"
 
-      - name: Validate input version is semantic
+      - name: Validate ${{ github.event.inputs.project }} version is semantic
         run: sem-tool validate "${{ github.event.inputs.version }}"
 
       - name: Build ${{ github.event.inputs.project }} in release mode
         run: cargo build --release -p ${{ github.event.inputs.project }}
 
+      - name: Generate ${{ github.event.inputs.project }} documentation
+        run: cargo doc --release --no-deps -p ${{ github.event.inputs.project }}
+
       - name: Login into crates.io
         run: echo "${CARGO_REGISTRY_TOKEN}" | cargo login
 
-      - name: "Package for crates.io"
+      - name: "Package ${{ github.event.inputs.project }} for crates.io"
         run: cargo package --allow-dirty
 
       - name: "Publish ${{ github.event.inputs.project }} to crates.io"
         run: cargo publish -p ${{ github.event.inputs.project }} --allow-dirty
 
-      - name: Create GitHub Release
+      - name: Create ${{ github.event.inputs.project }} GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

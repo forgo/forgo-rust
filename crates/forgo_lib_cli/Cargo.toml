@@ -1,5 +1,5 @@
 [package]
-name = "forgo-lib-cli"
+name = "forgo_lib_cli"
 version = "0.0.0"
 edition = "2024"
 publish = true

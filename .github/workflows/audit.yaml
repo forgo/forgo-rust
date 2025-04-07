@@ -1,0 +1,17 @@
+# Perform a security audit at midnight every day and check to detect advisories for crate dependencies.
+# Each new advisory (including informal) will create an issue.
+# https://github.com/rustsec/audit-check?tab=readme-ov-file#audit-changes
+
+name: Security audit
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

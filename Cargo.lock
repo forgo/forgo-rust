@@ -7,5 +7,5 @@ name = "forgo"
 version = "0.0.0"
 
 [[package]]
-name = "forgo-lib-cli"
+name = "forgo_lib_cli"
 version = "0.0.0"
