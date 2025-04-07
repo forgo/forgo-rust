@@ -28,7 +28,7 @@ jobs:
         uses: ./.github/actions/setup-rust
 
       - name: Update ${{ github.event.inputs.project }}'s Cargo.toml package version
-        run: toml set -r crates/${{ github.event.inputs.project }}/Cargo.toml package.version "${{ github.event.inputs.version }}"
+        run: cargo=$(toml set crates/${{ github.event.inputs.project }}/Cargo.toml package.version "${{ github.event.inputs.version }}") && echo "$cargo" > crates/${{ github.event.inputs.project }}/Cargo.toml
 
       - name: Validate input version aligns with package version
         run: test "$(toml get -r crates/${{ github.event.inputs.project }}/Cargo.toml package.version)" = "${{ github.event.inputs.version }}"
