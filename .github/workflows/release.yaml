@@ -13,7 +13,8 @@ on:
         default: forgo
         options:
           - forgo
-          - forgo-lib-cli
+          - forgo_lib_cli
+          - next
       version:
         description: "Version (e.g., 1.0.0)"
         required: true
