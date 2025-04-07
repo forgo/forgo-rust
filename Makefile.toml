@@ -7,7 +7,7 @@
 #   Run: `cargo watch -x "run -p forgo"`
 #
 # For continuous testing (library + binary):
-#   Run: `cargo watch -x "test -p forgo-lib-cli"`
+#   Run: `cargo watch -x "test -p forgo_lib_cli"`
 #
 # =============================================================================
 

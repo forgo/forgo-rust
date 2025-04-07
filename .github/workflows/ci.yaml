@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ["forgo-lib-cli", "forgo"]
+        project: ["forgo_lib_cli", "forgo"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ["forgo-lib-cli", "forgo"]
+        project: ["forgo_lib_cli", "forgo"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

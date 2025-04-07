@@ -13,6 +13,10 @@ inputs:
     description: "Version of sem-tool to install"
     required: false
     default: "0.1.8"
+  cargo_audit_version:
+    description: "Version of cargo-audit to install"
+    required: false
+    default: "0.21.2"
 runs:
   using: "composite"
   steps:
@@ -65,4 +69,14 @@ runs:
           cargo install sem-tool --version ${{ inputs.sem_tool_version }} --locked
         else
           echo "sem-tool is already installed."
+        fi
+
+    - name: Install cargo-audit if not already installed
+      shell: bash
+      run: |
+        if ! command -v cargo-audit > /dev/null; then
+          echo "Installing cargo-audit..."
+          cargo install cargo-audit --version ${{ inputs.cargo_audit_version }} --locked
+        else
+          echo "cargo-audit is already installed."
         fi

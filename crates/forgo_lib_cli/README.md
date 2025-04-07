@@ -1,4 +1,4 @@
-# forgo-lib-cli
+# forgo_lib_cli
 
 ![GitHub contributors](https://img.shields.io/github/contributors/forgo/forgo-rust)
 

@@ -6,7 +6,7 @@ A monorepo of Rust projects.
 
 | Project         | Type       | Description                                                                      | Location               |
 | --------------- | ---------- | -------------------------------------------------------------------------------- | ---------------------- |
-| `forgo-lib-cli` | Library    | A library to help build common features into your CLI (e.g. - device code flow). | `crates/forgo-lib-cli` |
+| `forgo_lib_cli` | Library    | A library to help build common features into your CLI (e.g. - device code flow). | `crates/forgo_lib_cli` |
 | `forgo`         | Executable | A CLI tool for doing awesome things. (binary: `forgo`)                           | `crates/forgo`         |
 
 ## Repository Structure
@@ -31,7 +31,7 @@ forgo-rust/
 │   ├── forgo/              # Crate for binary
 │   │   ├── Cargo.toml
 │   │   └── src/
-│   └── forgo-lib-cli/      # Crate for library
+│   └── forgo_lib_cli/      # Crate for library
 │       ├── Cargo.toml
 │       └── src/
 
@@ -43,6 +43,9 @@ forgo-rust/
 - [rustup](https://rustup.rs/):
 - [cargo-make](https://github.com/sagiegurari/cargo-make)
 - [cargo-watch](https://github.com/watchexec/cargo-watch)
+- [cargo-audit](https://github.com/RustSec/rustsec/tree/main/cargo-audit)
+- [sem-tool](https://github.com/canardleteer/sem-tool)
+- [toml-cli](https://github.com/gnprice/toml-cli)
 
 ## Building the Workspace
 
