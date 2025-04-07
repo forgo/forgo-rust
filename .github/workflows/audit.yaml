@@ -2,7 +2,7 @@
 # Each new advisory (including informal) will create an issue.
 # https://github.com/rustsec/audit-check?tab=readme-ov-file#audit-changes
 
-name: Security audit
+name: Audit
 on:
   workflow_dispatch:
   schedule:
