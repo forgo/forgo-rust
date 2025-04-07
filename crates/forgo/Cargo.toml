@@ -11,7 +11,7 @@ categories = ["command-line-utilities"]
 readme = "README.md" # relative to this Cargo.toml
 
 [dependencies]
-forgo-lib-cli = { path = "../forgo-lib-cli" }
+#forgo-lib-cli = "0.0.0"
 
 [[bin]]
 name = "forgo"
