@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/forgo_lib_cli",
     "crates/forgo",
-    # add additional projects as you create them
+    "crates/forgo_dev",
+    "crates/forgo_lib_cli",
+    "crates/forgo_lib_yaml",
 ]
