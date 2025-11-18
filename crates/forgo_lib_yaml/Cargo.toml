@@ -1,0 +1,16 @@
+[package]
+name = "forgo_lib_yaml"
+version = "0.0.0"
+edition = "2024"
+publish = true
+license = "MIT"
+description = "Zero-dependency YAML subset parser/editor."
+repository = "https://github.com/forgo/forgo-rust"
+readme = "README.md"
+
+[features]
+default = []
+# serde = ["dep:serde"]
+
+[dependencies]
+# serde = { version = "1", features = ["derive"], optional = true }

@@ -1,0 +1,118 @@
+{
+  "version": "1.0",
+  "date": "2025-11-16",
+  "phase": "Phase 0 - Infrastructure Setup",
+  "baseline": {
+    "overall": {
+      "total": 671,
+      "passed": 607,
+      "failed": 63,
+      "ignored": 1,
+      "pass_rate": 90.46
+    },
+    "chapters": {
+      "2": {
+        "description": "Overview",
+        "estimated_total": 63,
+        "passing": "~43",
+        "failing": 20,
+        "notes": "Document streams, block scalars, error detection"
+      },
+      "3": {
+        "description": "Processes and Models",
+        "estimated_total": 79,
+        "passing": "~71",
+        "failing": 8,
+        "notes": "Anchor scope, directive validation"
+      },
+      "4": {
+        "description": "Syntax Conventions",
+        "estimated_total": 62,
+        "passing": "~61",
+        "failing": 1,
+        "notes": "Flow-block transitions"
+      },
+      "5": {
+        "description": "Character Productions",
+        "estimated_total": 96,
+        "passing": "~83",
+        "failing": 13,
+        "notes": "Character validation, escape sequences"
+      },
+      "6": {
+        "description": "Structural Productions",
+        "estimated_total": 70,
+        "passing": 70,
+        "failing": 0,
+        "notes": "100% passing! ✅"
+      },
+      "7": {
+        "description": "Flow Style Productions",
+        "estimated_total": 67,
+        "passing": "~56",
+        "failing": 11,
+        "notes": "Flow collection validation"
+      },
+      "8": {
+        "description": "Block Style Productions",
+        "estimated_total": 78,
+        "passing": "~75",
+        "failing": 3,
+        "notes": "Block scalars, quoted keys"
+      },
+      "9": {
+        "description": "Document Stream Productions",
+        "estimated_total": 60,
+        "passing": "~45",
+        "failing": 15,
+        "notes": "Multi-document, markers, directives"
+      },
+      "10": {
+        "description": "Recommended Schemas",
+        "estimated_total": 86,
+        "passing": 86,
+        "failing": 0,
+        "notes": "100% passing! ✅"
+      }
+    },
+    "implementation": {
+      "total": 9,
+      "passed": 3,
+      "failed": 6,
+      "failing_tests": [
+        "block_scalars.rs::indent_indicator_and_folding",
+        "block_scalars_strict.rs (5 tests)",
+        "flow.rs::flow_mapping_and_nested_flow_seq",
+        "schema_core.rs::core_case_sensitive_bools_null",
+        "single_double_quotes.rs::single_and_double_quoted_escapes",
+        "tags.rs::simple_short_and_verbatim_tags_parse_and_emit"
+      ]
+    }
+  },
+  "targets": {
+    "phase_1": {
+      "name": "Validation Layer",
+      "target_passed": 633,
+      "target_rate": 94.3,
+      "focus": "Error detection tests (26 tests)"
+    },
+    "phase_2": {
+      "name": "Block Scalars",
+      "target_passed": 644,
+      "target_rate": 96.0,
+      "focus": "Block scalar implementation (11 tests)"
+    },
+    "phase_3": {
+      "name": "Document Streams",
+      "target_passed": 660,
+      "target_rate": 98.4,
+      "focus": "Multi-document support (16 tests)"
+    },
+    "phase_4": {
+      "name": "Tags & Polish",
+      "target_passed": 671,
+      "target_rate": 100.0,
+      "focus": "Tag system and edge cases (11 tests)"
+    }
+  }
+}
