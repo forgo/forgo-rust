@@ -1,3 +1,20 @@
+//! Block Scalar Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §8.1: Block Scalar Styles (literal `|` and folded `>`)
+//! - §8.1.1: Block Scalar Headers (indicators and chomping)
+//! - §8.1.1.1: Block Indentation Indicator
+//! - §8.1.1.2: Block Chomping Indicator (strip `-`, keep `+`, clip default)
+//! - §8.1.2: Literal Style (preserves newlines)
+//! - §8.1.3: Folded Style (folds newlines to spaces)
+//! - §6.5: Line Folding (how folding works)
+//!
+//! **Purpose:**
+//! These tests validate block scalar parsing, emission, and round-trip behavior.
+//! The spec tests in `spec/ch_8_block_styles.rs` cover basic compliance;
+//! these tests validate implementation-specific behavior like trailing space
+//! handling, chomping semantics, and edge cases.
+
 use forgo_lib_yaml;
 
 fn show(s: &str) -> String {

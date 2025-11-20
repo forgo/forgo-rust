@@ -10,7 +10,7 @@
 //!
 //! Run this example with: `cargo run --example fluent_builders`
 
-use forgo_lib_yaml::{parse, stringify, Elem, Node};
+use forgo_lib_yaml::{parse, stringify, Elem, MapKey, Node};
 
 fn main() {
     println!("=== Building YAML Documents with Fluent Builders ===\n");
@@ -67,7 +67,7 @@ fn main() {
     println!("3. Building a Complete Configuration Document\n");
 
     // Build a server configuration from scratch
-    let mut server_config = vec![];
+    let mut server_config: Vec<(MapKey, Elem)> = vec![];
 
     // Add application metadata
     server_config.push((
@@ -89,7 +89,7 @@ fn main() {
     ));
 
     // Build server settings sub-map
-    let mut server_settings = vec![];
+    let mut server_settings: Vec<(MapKey, Elem)> = vec![];
     server_settings.push((
         "host".to_string(),
         Elem::string("0.0.0.0"),
@@ -127,7 +127,7 @@ fn main() {
     ));
 
     // Build database configuration
-    let mut db_config = vec![];
+    let mut db_config: Vec<(MapKey, Elem)> = vec![];
     db_config.push((
         "driver".to_string(),
         Elem::string("postgresql"),
@@ -214,14 +214,14 @@ fn main() {
     println!("5. Building Nested Structures\n");
 
     // Create a CI/CD configuration
-    let mut ci_config = vec![];
+    let mut ci_config: Vec<(MapKey, Elem)> = vec![];
 
     // Build jobs map
-    let mut jobs = vec![];
+    let mut jobs: Vec<(MapKey, Elem)> = vec![];
 
     // Build job
-    let mut build_job = vec![];
-    build_job.push(("runs-on".to_string(), Elem::string("ubuntu-latest")));
+    let mut build_job: Vec<(MapKey, Elem)> = vec![];
+    build_job.push(("runs-on".into(), Elem::string("ubuntu-latest")));
 
     let build_steps = vec![
         Elem::string("checkout code"),
@@ -233,22 +233,22 @@ fn main() {
     ];
 
     build_job.push((
-        "steps".to_string(),
+        "steps".into(),
         Elem::new(Node::Seq(build_steps))
             .with_comment("Build steps"),
     ));
 
     jobs.push((
-        "build".to_string(),
+        "build".into(),
         Elem::new(Node::Map(build_job))
             .with_comment("Build and test job"),
     ));
 
     // Deploy job
-    let mut deploy_job = vec![];
-    deploy_job.push(("runs-on".to_string(), Elem::string("ubuntu-latest")));
+    let mut deploy_job: Vec<(MapKey, Elem)> = vec![];
+    deploy_job.push(("runs-on".into(), Elem::string("ubuntu-latest")));
     deploy_job.push((
-        "needs".to_string(),
+        "needs".into(),
         Elem::new(Node::Seq(vec![Elem::string("build")]))
             .with_comment("Wait for build to complete"),
     ));
@@ -259,18 +259,18 @@ fn main() {
     ];
 
     deploy_job.push((
-        "steps".to_string(),
+        "steps".into(),
         Elem::new(Node::Seq(deploy_steps)),
     ));
 
     jobs.push((
-        "deploy".to_string(),
+        "deploy".into(),
         Elem::new(Node::Map(deploy_job))
             .with_comment("Deployment job"),
     ));
 
     ci_config.push((
-        "jobs".to_string(),
+        "jobs".into(),
         Elem::new(Node::Map(jobs))
             .with_leading_comments(vec!["CI/CD Jobs".to_string()]),
     ));

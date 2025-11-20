@@ -1,3 +1,16 @@
+//! AST Integration Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §3.2: Information Models (representation graph, serialization tree, presentation stream)
+//! - §6: Structural Productions (overall YAML structure)
+//! - §7-8: Flow and Block Styles (concrete syntax)
+//!
+//! **Purpose:**
+//! These integration tests validate complete document handling through the full
+//! parse → AST manipulation → emit cycle. They test end-to-end workflows combining
+//! lexer, parser, AST, and emitter components. Unlike unit tests that test components
+//! in isolation, these validate that the system works correctly as a whole.
+
 use forgo_lib_yaml::{Doc, Node, Scalar, needs_quotes};
 
 #[test]

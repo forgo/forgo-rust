@@ -1,3 +1,19 @@
+//! Document Stream Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §9: Document Stream Productions
+//! - §9.1: Documents (bare, explicit, with directives)
+//! - §9.1.1: Document Prefix (BOM)
+//! - §9.1.2: Document Markers (`---` and `...`)
+//! - §9.2: Streams (multiple documents)
+//! - §6.8: Directives (`%YAML` and `%TAG`)
+//!
+//! **Purpose:**
+//! These tests validate multi-document stream handling, document markers,
+//! and directive preservation. The spec tests in `spec/ch_9_documents.rs`
+//! cover basic document syntax; these tests validate implementation-specific
+//! behavior like directive round-tripping and marker preservation.
+
 use forgo_lib_yaml::Doc;
 
 #[test]

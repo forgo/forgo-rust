@@ -1,3 +1,18 @@
+//! Tag Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §3.2.1.2: Tags in representation graph
+//! - §6.8.2: TAG Directives (`%TAG`)
+//! - §6.8.2.1: Tag Handles (`!`, `!!`, `!e!`)
+//! - §6.8.2.2: Tag Prefixes (verbatim tags like `!<...>`)
+//! - §6.9.1: Node Tags (explicit tag syntax)
+//!
+//! **Purpose:**
+//! These tests validate tag directive parsing, tag handle resolution,
+//! and tag preservation during round-trip. The spec tests in
+//! `spec/ch_6_structural.rs` cover basic tag syntax; these tests
+//! validate complete tag system behavior including directives.
+
 use forgo_lib_yaml::Doc;
 
 #[test]

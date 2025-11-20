@@ -1,9 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_6_structural.rs
 //! YAML 1.2.2 Chapter 6: Structural Productions
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-6-structural-productions
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-6-structural-productions
 //!
-//! Structural productions define the YAML document structure.
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 6. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_6_Y_ZZ_description` where 6 is the chapter, Y is the section, and
+//! ZZ is the test number.
+//!
+//! **Coverage:**
+//! Indentation, separation, line prefixes, empty lines, line folding, comments, directives, node properties
 
 #[path = "../common/mod.rs"]
 mod common;

@@ -1,4 +1,17 @@
-// tests/emitter_top_level.rs
+//! Top-Level Element Emission Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §9: Document Stream
+//! - §9.1: Document Prefix and Markers
+//! - §8.1: Block Scalar Styles (top-level)
+//! - §7.3: Flow Scalar Styles (top-level)
+//!
+//! **Purpose:**
+//! These are unit tests for top-level element emission. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 #[test]

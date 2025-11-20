@@ -1,5 +1,5 @@
 // crates/forgo_lib_yaml/src/parser.rs
-use crate::ast::{BlockStyle, Doc, Elem, Error, Meta, Node, Scalar};
+use crate::ast::{BlockStyle, Doc, Elem, Error, MapKey, Meta, Node, Scalar};
 use crate::lexer::{Lexer, StrTok, Tok};
 use crate::parser_helpers::{
     apply_chomping, classify_scalar, classify_text_as_scalar, fold_text,
@@ -47,6 +47,7 @@ impl<'a> Parser<'a> {
             Tok::Str(StrTok {
                 text,
                 quoted: false,
+                ..
             }) => {
                 // If the first token is a plain word (could be '---' or '...'),
                 // include its text so we see the true start of the line.
@@ -369,22 +370,46 @@ impl<'a> Parser<'a> {
         if matches!(self.look, Tok::DocStart) {
             explicit_start = true;
             self.bump();
-            // After ---, we can only have:
-            // 1. Newline (content on next line)
-            // 2. Pipe/Gt (block scalar on same line)
-            // 3. EOF
-            // 4. Comment (TODO: handle this)
-            // Anything else is invalid (e.g., "--- key: value" is not allowed)
+            // After ---, per YAML 1.2.2 §9.1.2, document markers may be followed by:
+            // - Newline (most common case - content on next line)
+            // - Directives/tags on same line (e.g., "--- !!map")
+            // - Block scalar indicators on same line (e.g., "--- |" or "--- >")
+            // - Anchors on same line (e.g., "--- &anchor")
+            // - Comments (e.g., "--- # comment")
+            // - EOF
+            // - Content separated by tab/space (e.g., "---\t scalar", "--- scalar")
             match &self.look {
                 Tok::Newline => {
                     self.bump();
                 }
-                Tok::Pipe | Tok::Gt | Tok::Eof => {
-                    // These are allowed after --- on same line
+                Tok::Pipe | Tok::Gt | Tok::Eof | Tok::Tag(_) | Tok::Comment(_) | Tok::Amp => {
+                    // These are explicitly allowed after --- on same line
+                    // Pipe/Gt: block scalars (e.g., "--- |")
+                    // Tag: tags (e.g., "--- !!map")
+                    // Comment: comments (e.g., "--- # comment")
+                    // Amp: anchors (e.g., "--- &anchor")
+                }
+                Tok::Str(_) => {
+                    // Scalars are allowed after ---, but NOT mappings
+                    // Per YAML 1.2.2 §9.1.2, mappings cannot start on the --- line
+                    // Check if the next token is a colon (which would make this a mapping)
+                    let mut lx_lookahead = self.lx.clone();
+                    let next_tok = lx_lookahead.next_token();
+                    if matches!(next_tok, Tok::Colon) {
+                        return Err(Error::Parse(
+                            "mapping cannot start on document start line '---' (per YAML 1.2.2 §9.1.2)".into()
+                        ));
+                    }
+                    // Otherwise, it's a standalone scalar like "--- scalar" which is valid
+                }
+                Tok::Error(msg) => {
+                    // Lexer error (e.g., unterminated quoted string due to document marker)
+                    return Err(Error::Parse(msg.clone()));
                 }
                 _ => {
+                    // All other content requires newline
                     return Err(Error::Parse(
-                        "document start marker '---' must be followed by newline or block scalar indicator".into()
+                        "document start marker '---' must be followed by newline or whitespace before content".into()
                     ));
                 }
             }
@@ -411,13 +436,11 @@ impl<'a> Parser<'a> {
         }
 
         // After optional '---' handling, still in parse_document():
-        if let Some((maj, min)) = yaml_version {
-            if (maj, min) != (1, 2) {
-                return Err(Error::Parse(
-                    "unsupported %YAML version; only 1.2 is supported".into(),
-                ));
-            }
-        }
+        // Per YAML 1.2.2 §6.8.1: Implementations should emit a warning for unsupported versions
+        // but attempt to parse anyway. Since this is a library without a warning system,
+        // we simply note the version and continue (compatible with spec example 6.14).
+        // The version is stored in yaml_version but not used for validation.
+        let _ = yaml_version; // Acknowledge version but don't validate
 
         // 4) Parse the root node
         // Check for empty document: if we see DocStart, DocEnd, or Eof immediately, the document is empty
@@ -431,9 +454,6 @@ impl<'a> Parser<'a> {
         // 5) End marker `...` optionally terminates the document
         //    (Lexer yields Tok::DocEnd at line start; eat it and any trailing newline)
         //    If not present, we'll just consume to EoF or next doc's start.
-        if matches!(self.look, Tok::Newline) {
-            self.bump();
-        }
         if matches!(self.look, Tok::DocEnd) {
             explicit_end = true;
             self.bump();
@@ -535,11 +555,37 @@ impl<'a> Parser<'a> {
             }
             Tok::Indent(n) if n >= base => self.parse_block(base)?,
             Tok::LBracket => {
-                let node = self.parse_inline_array_node()?;
+                // At parse_elem_at_indent level, flow collections might be the root element
+                // Pass usize::MAX to indicate no parent block constraint
+                let node = self.parse_inline_array_node(usize::MAX)?;
+
+                // C2SP: Flow sequences cannot be used as implicit keys (YAML 1.2.2 §7.1.3)
+                // Check if this flow sequence is followed by a colon (making it a key)
+                // Note: We can't use a simple lookahead because there might be whitespace/newlines
+                // Instead, we peek ahead without consuming to check the pattern
+                if self.is_followed_by_colon() {
+                    return Err(Error::Parse(
+                        "flow collections cannot be used as implicit keys (YAML 1.2.2 §7.1.3)".into()
+                    ));
+                }
+
                 Elem::new(node)
             }
             Tok::LBrace => {
-                let node = self.parse_inline_map_node()?;
+                // At parse_elem_at_indent level, flow collections might be the root element
+                // Pass usize::MAX to indicate no parent block constraint
+                let node = self.parse_inline_map_node(usize::MAX)?;
+
+                // C2SP: Flow mappings cannot be used as implicit keys (YAML 1.2.2 §7.1.3)
+                // Check if this flow mapping is followed by a colon (making it a key)
+                // Note: We can't use a simple lookahead because there might be whitespace/newlines
+                // Instead, we peek ahead without consuming to check the pattern
+                if self.is_followed_by_colon() {
+                    return Err(Error::Parse(
+                        "flow collections cannot be used as implicit keys (YAML 1.2.2 §7.1.3)".into()
+                    ));
+                }
+
                 Elem::new(node)
             }
             Tok::Str(s) => {
@@ -598,7 +644,7 @@ impl<'a> Parser<'a> {
 
     fn parse_block(&mut self, base: usize) -> Result<Elem, Error> {
         // Parse either a Map or Seq block.
-        let mut entries: Vec<(String, Elem)> = vec![];
+        let mut entries: Vec<(MapKey, Elem)> = vec![];
         let mut items: Vec<Elem> = vec![];
         let (mut saw_map, mut saw_seq) = (false, false);
         // Track canonical keys to detect duplicates
@@ -606,6 +652,7 @@ impl<'a> Parser<'a> {
         // Track last entry's indent and value type for ill-formed structure detection
         let mut last_entry_indent: Option<usize> = None;
         let mut last_value_type: Option<ValueType> = None;
+        let mut last_value_non_empty = false;
         // Capture leading comments that appear before any content (belong to the container itself)
         // Only take pending comments for top-level blocks (base == 0), as nested blocks should
         // have their leading comments attached to the first child
@@ -647,9 +694,10 @@ impl<'a> Parser<'a> {
                     match self.look.clone() {
                         Tok::Dash => {
                             // `Tok::Dash` means the lexer saw `- ` (dash+space). It's definitely a list item.
-                            // Check for ill-formed: sequence after inline map value at greater indent
+                            // YAML 1.2.2 §3.3: Check for ill-formed structure
+                            // A sequence cannot follow a non-empty inline map value at deeper indentation
                             if let (Some(last_indent), Some(ValueType::Inline)) = (last_entry_indent, last_value_type) {
-                                if saw_map && !saw_seq && n > last_indent {
+                                if saw_map && !saw_seq && last_value_non_empty && n > last_indent {
                                     return Err(Error::Parse(
                                         "improper indentation: sequence cannot follow an inline map value at deeper indentation".into()
                                     ));
@@ -658,7 +706,7 @@ impl<'a> Parser<'a> {
                             saw_seq = true;
                             self.bump(); // consume Tok::Dash
 
-                            let mut child = self.parse_line_value_or_nested(n + 2)?;
+                            let mut child = self.parse_line_value_or_nested(n + 2, n)?;
                             if !self.pending_leading_comments.is_empty() {
                                 child.meta.leading_comments =
                                     std::mem::take(&mut self.pending_leading_comments);
@@ -669,6 +717,7 @@ impl<'a> Parser<'a> {
                         Tok::Str(StrTok {
                             text: key,
                             quoted: quoted_key,
+                            ..
                         }) => {
                             // Check for directives appearing after content has started
                             if key == "%YAML" || key == "%TAG" {
@@ -684,26 +733,33 @@ impl<'a> Parser<'a> {
                                 // Map entry: key:
                                 self.bump(); // ':'
                                 saw_map = true;
-                                let (mut value, vtype) = self.parse_value_after_colon(n + 2)?;
+                                let (mut value, vtype) = self.parse_value_after_colon(n + 2, n)?;
                                 if !self.pending_leading_comments.is_empty() {
                                     value.meta.leading_comments =
                                         std::mem::take(&mut self.pending_leading_comments);
                                 }
 
+                                // Check if value is non-empty (has actual content) - do this before moving value
+                                let value_is_non_empty = !matches!(
+                                    &value.node,
+                                    Node::Scalar(Scalar::Str(s)) if s.is_empty()
+                                );
+
                                 // Check for duplicate keys using canonical comparison
                                 let canonical_key = Self::canonicalize_key(&key);
                                 if let Some(&idx) = canonical_keys.get(&canonical_key) {
                                     // Duplicate key - replace with last value (last wins)
-                                    entries[idx] = (key, value);
+                                    entries[idx] = (MapKey::Str(key), value);
                                 } else {
                                     // New key - add to map and track index
                                     canonical_keys.insert(canonical_key, entries.len());
-                                    entries.push((key, value));
+                                    entries.push((MapKey::Str(key), value));
                                 }
 
                                 // Track this entry's indent and value type for ill-formed structure detection
                                 last_entry_indent = Some(n);
                                 last_value_type = Some(vtype);
+                                last_value_non_empty = value_is_non_empty;
                             } else {
                                 // Not followed by ':'. If this is the first thing at this block level,
                                 // and we're exactly at the base indent, and the token was QUOTED,
@@ -713,6 +769,7 @@ impl<'a> Parser<'a> {
                                         Elem::new(Node::Scalar(classify_scalar(&StrTok {
                                             text: key,
                                             quoted: quoted_key, // preserve
+                                            multiline: false,
                                         })));
                                     // Attach block-level comments first, then any pending comments
                                     if !block_leading_comments.is_empty() {
@@ -732,6 +789,7 @@ impl<'a> Parser<'a> {
                                 let mut child =
                                     Elem::new(Node::Scalar(classify_scalar(&StrTok {
                                         text: key,
+                                        multiline: false,
                                         quoted: quoted_key, // preserve
                                     })));
                                 if !self.pending_leading_comments.is_empty() {
@@ -744,7 +802,8 @@ impl<'a> Parser<'a> {
                         }
                         Tok::LBracket => {
                             // Flow sequence at block level - treat as root if first thing
-                            let mut child = Elem::new(self.parse_inline_array_node()?);
+                            // Use usize::MAX to indicate no parent constraint for top-level flow
+                            let mut child = Elem::new(self.parse_inline_array_node(usize::MAX)?);
                             // Attach block-level comments first, then any pending comments
                             if !block_leading_comments.is_empty() {
                                 child.meta.leading_comments = block_leading_comments.clone();
@@ -764,7 +823,8 @@ impl<'a> Parser<'a> {
                         }
                         Tok::LBrace => {
                             // Flow mapping at block level - treat as root if first thing
-                            let mut child = Elem::new(self.parse_inline_map_node()?);
+                            // Use usize::MAX to indicate no parent constraint for top-level flow
+                            let mut child = Elem::new(self.parse_inline_map_node(usize::MAX)?);
                             // Attach block-level comments first, then any pending comments
                             if !block_leading_comments.is_empty() {
                                 child.meta.leading_comments = block_leading_comments.clone();
@@ -925,7 +985,7 @@ impl<'a> Parser<'a> {
         Ok(result)
     }
 
-    fn parse_value_after_colon(&mut self, nested_indent: usize) -> Result<(Elem, ValueType), Error> {
+    fn parse_value_after_colon(&mut self, nested_indent: usize, parent_indent: usize) -> Result<(Elem, ValueType), Error> {
         // Check for lexer errors first
         if let Tok::Error(msg) = &self.look {
             return Err(Error::Parse(msg.clone()));
@@ -1011,11 +1071,11 @@ impl<'a> Parser<'a> {
                 e
             }
             Tok::LBracket => {
-                let node = self.parse_inline_array_node()?;
+                let node = self.parse_inline_array_node(parent_indent)?;
                 Elem { node, meta }
             }
             Tok::LBrace => {
-                let node = self.parse_inline_map_node()?;
+                let node = self.parse_inline_map_node(parent_indent)?;
                 Elem { node, meta }
             }
             Tok::RBracket => {
@@ -1055,13 +1115,13 @@ impl<'a> Parser<'a> {
                         self.bump();
                         loop {
                             match self.look.clone() {
-                                Tok::Indent(n) if n >= nested_indent => {
+                                Tok::Indent(n) if n > parent_indent => {
                                     if self.sees_indented_doc_marker() {
                                         return Err(Error::Parse(
                                             "document marker not allowed inside block".into(),
                                         ));
                                     }
-                                    let mut child = self.parse_elem_at_indent(nested_indent)?;
+                                    let mut child = self.parse_elem_at_indent(n)?;
                                     if meta.tag.is_some() && child.meta.tag.is_none() {
                                         child.meta.tag = meta.tag.take();
                                     }
@@ -1107,7 +1167,7 @@ impl<'a> Parser<'a> {
                 self.bump();
                 loop {
                     match self.look.clone() {
-                        Tok::Indent(n) if n >= nested_indent => {
+                        Tok::Indent(n) if n > parent_indent => {
                             // DO NOT self.bump() here
 
                             // Same strict guard as parse_block():
@@ -1117,7 +1177,7 @@ impl<'a> Parser<'a> {
                                 ));
                             }
 
-                            let mut child = self.parse_elem_at_indent(nested_indent)?;
+                            let mut child = self.parse_elem_at_indent(n)?;
                             if meta.tag.is_some() && child.meta.tag.is_none() {
                                 child.meta.tag = meta.tag.take();
                             }
@@ -1142,10 +1202,11 @@ impl<'a> Parser<'a> {
                     }
                 }
                 // Empty scalar after newline with no nested content
+                // Return Block type since we saw a newline (not inline on same line)
                 return Ok((Elem {
                     node: Node::Scalar(Scalar::Str(String::new())),
                     meta,
-                }, ValueType::Inline));
+                }, ValueType::Block));
             }
 
             Tok::Eof => Elem {
@@ -1195,14 +1256,16 @@ impl<'a> Parser<'a> {
         Ok((elem, value_type))
     }
 
-    fn parse_inline_array_node(&mut self) -> Result<Node, Error> {
+    fn parse_inline_array_node(&mut self, parent_indent: usize) -> Result<Node, Error> {
         // LBracket already current
+        // parent_indent: the block context indent level (used for validating continuation lines)
         self.bump();
         let mut items: Vec<Elem> = vec![];
         let mut current_item: Option<Elem> = None;
         let mut prev_tok = Tok::LBracket;
         let mut current_item_strings = 0; // Track strings in current item
         let mut has_comma = false; // Track if we've seen any commas
+        let mut seen_newline = false; // Track if we've crossed a newline (for indent validation)
 
         loop {
             match self.look.clone() {
@@ -1216,10 +1279,7 @@ impl<'a> Parser<'a> {
                 }
                 Tok::Eof => return Err(Error::Parse("unterminated flow sequence".into())),
                 Tok::RBracket => {
-                    // Check for trailing comma before closing bracket
-                    if matches!(prev_tok, Tok::Comma) {
-                        return Err(Error::Parse("trailing comma in flow sequence".into()));
-                    }
+                    // Trailing commas are allowed per YAML 1.2.2 §7.4
                     self.bump();
                     // Add final item if any
                     if let Some(item) = current_item.take() {
@@ -1234,6 +1294,12 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 Tok::Comma => {
+                    // YAML 1.2.2 §7.4: Validate no leading or consecutive commas
+                    if matches!(prev_tok, Tok::Comma | Tok::LBracket) {
+                        return Err(Error::Parse(
+                            "invalid flow sequence: leading or consecutive commas not allowed".into(),
+                        ));
+                    }
                     // Add current item to list
                     if let Some(item) = current_item.take() {
                         items.push(item);
@@ -1243,9 +1309,16 @@ impl<'a> Parser<'a> {
                     self.bump();
                     prev_tok = Tok::Comma;
                 }
-                Tok::Str(StrTok { text, quoted }) => {
+                Tok::Str(StrTok { text, quoted, .. }) => {
                     self.bump();
                     current_item_strings += 1;
+
+                    // YAML 1.2.2 §7.4: Plain dash "-" alone is invalid in flow context
+                    if !quoted && text == "-" {
+                        return Err(Error::Parse(
+                            "plain dash '-' is not allowed in flow sequences (use quotes)".into(),
+                        ));
+                    }
 
                     // Handle consecutive strings: they form a multi-word scalar
                     if let Some(ref mut item) = current_item {
@@ -1269,28 +1342,115 @@ impl<'a> Parser<'a> {
                         elem.meta.prefer_quoted = quoted;
                         current_item = Some(elem);
                     }
-                    prev_tok = Tok::Str(StrTok { text, quoted });
+                    prev_tok = Tok::Str(StrTok { text, quoted, multiline: false });
                 }
                 Tok::LBracket => {
-                    // Nested flow sequence
-                    let node = self.parse_inline_array_node()?;
+                    // Nested flow sequence - inherit parent_indent
+                    let node = self.parse_inline_array_node(parent_indent)?;
                     current_item = Some(Elem::new(node));
                     prev_tok = Tok::RBracket; // Simulate consumed collection
                 }
                 Tok::LBrace => {
-                    // Nested flow mapping
-                    let node = self.parse_inline_map_node()?;
+                    // Nested flow mapping - inherit parent_indent
+                    let node = self.parse_inline_map_node(parent_indent)?;
                     current_item = Some(Elem::new(node));
                     prev_tok = Tok::RBrace; // Simulate consumed collection
                 }
                 Tok::RBrace => {
                     return Err(Error::Parse("unexpected '}' in flow sequence".into()));
                 }
+                Tok::Colon => {
+                    // YAML 1.2.2 §7.19-7.21: Single-pair implicit mappings in flow sequences
+                    // `[foo: bar]` creates a sequence with one mapping element
+                    // The current_item becomes the key, we parse the value, create a mapping
+                    self.bump(); // consume ':'
+
+                    let key = if let Some(item) = current_item.take() {
+                        // Use current item as key
+                        match item.node {
+                            Node::Scalar(Scalar::Str(s)) => MapKey::Str(s),
+                            Node::Scalar(s) => MapKey::Str(s.to_string()),
+                            Node::Seq(_) | Node::Map(_) | Node::Alias(_) => {
+                                // YAML 1.2.2 §7.19-7.21: Complex keys (sequences, maps, aliases)
+                                // are allowed as implicit mapping keys in flow sequences
+                                MapKey::Complex(Box::new(item))
+                            }
+                        }
+                    } else {
+                        // Empty key (e.g., `[ : value ]`)
+                        MapKey::Str(String::new())
+                    };
+
+                    // Parse the value (could be scalar, nested collection, or multi-word)
+                    let value = match self.look.clone() {
+                        Tok::Str(StrTok { text, quoted, .. }) => {
+                            self.bump();
+                            let mut value_text = text;
+                            let mut value_quoted = quoted;
+
+                            // Collect consecutive strings for multi-word values (e.g., "empty key")
+                            while let Tok::Str(StrTok { text, quoted, .. }) = &self.look {
+                                value_text.push(' ');
+                                value_text.push_str(text);
+                                value_quoted |= *quoted;
+                                self.bump();
+                            }
+
+                            let scalar = classify_text_as_scalar(&value_text, value_quoted);
+                            let mut elem = Elem::new(Node::Scalar(scalar));
+                            elem.meta.prefer_quoted = value_quoted;
+                            elem
+                        }
+                        Tok::LBracket => {
+                            let node = self.parse_inline_array_node(parent_indent)?;
+                            Elem::new(node)
+                        }
+                        Tok::LBrace => {
+                            let node = self.parse_inline_map_node(parent_indent)?;
+                            Elem::new(node)
+                        }
+                        Tok::Comma | Tok::RBracket => {
+                            // Null value (e.g., `[key:, other]` or `[key:]`)
+                            Elem::new(Node::Scalar(Scalar::Null))
+                        }
+                        _ => {
+                            // Try to parse as inline scalar
+                            return Err(Error::Parse(
+                                "unexpected token after ':' in flow sequence mapping".into()
+                            ));
+                        }
+                    };
+
+                    // Create a mapping with single key-value pair
+                    let mapping = Node::Map(vec![(key, value)]);
+                    current_item = Some(Elem::new(mapping));
+                    current_item_strings = 0; // Reset counter
+                    prev_tok = Tok::Colon;
+                }
                 Tok::Newline => {
+                    seen_newline = true;
                     self.bump();
                 }
-                Tok::Indent(_) => {
+                Tok::Indent(n) => {
                     self.bump();
+                    // Consume any additional consecutive Indent tokens (lexer quirk)
+                    while matches!(self.look, Tok::Indent(_)) {
+                        self.bump();
+                    }
+
+                    // Per YAML 1.2.2 §7.5: Flow collection continuation lines must be indented
+                    // more than the parent block context. If parent is at indent N, continuations
+                    // must be at least indent N+1.
+                    // parent_indent == usize::MAX means no parent constraint (root-level flow)
+                    if seen_newline && parent_indent != usize::MAX && n <= parent_indent {
+                        // Now check what follows after consuming all indents
+                        // If it's actual content (not whitespace/comments/closing), that's an error
+                        if !matches!(self.look, Tok::Newline | Tok::Comment(_) | Tok::RBracket) {
+                            return Err(Error::Parse(
+                                format!("flow sequence continuation must be indented more than parent context (need > {}, got {})", parent_indent, n)
+                            ));
+                        }
+                    }
                     // Per YAML 1.2.2 Section 8.2.3: "block styles are not allowed inside flow collections"
                     // Check if block sequence indicator follows indentation
                     if matches!(self.look, Tok::Dash) {
@@ -1316,7 +1476,7 @@ impl<'a> Parser<'a> {
 
                     // Expect a number after the sign
                     match self.look.clone() {
-                        Tok::Str(StrTok { text, quoted }) if !quoted => {
+                        Tok::Str(StrTok { text, quoted, .. }) if !quoted => {
                             self.bump();
                             current_item_strings += 1;
 
@@ -1327,13 +1487,14 @@ impl<'a> Parser<'a> {
 
                             let scalar = classify_text_as_scalar(&signed_text, false);
                             current_item = Some(Elem::new(Node::Scalar(scalar)));
-                            prev_tok = Tok::Str(StrTok { text: signed_text, quoted: false });
+                            prev_tok = Tok::Str(StrTok { text: signed_text, quoted: false, multiline: false });
                         }
                         _ => {
-                            // Sign without number following - treat as plain text
-                            let mut text = String::new();
-                            text.push(sign);
-                            current_item = Some(Elem::new(Node::Scalar(Scalar::Str(text))));
+                            // YAML 1.2.2 §7.4: Plain '-' or '+' alone is invalid in flow context
+                            return Err(Error::Parse(format!(
+                                "plain '{}' is not allowed in flow sequences (use quotes)",
+                                sign
+                            )));
                         }
                     }
                 }
@@ -1347,15 +1508,17 @@ impl<'a> Parser<'a> {
         Ok(Node::Seq(items))
     }
 
-    fn parse_inline_map_node(&mut self) -> Result<Node, Error> {
+    fn parse_inline_map_node(&mut self, parent_indent: usize) -> Result<Node, Error> {
         // LBrace already current
+        // parent_indent: the block context indent level (used for validating continuation lines)
         self.bump();
-        let mut entries: Vec<(String, Elem)> = vec![];
+        let mut entries: Vec<(MapKey, Elem)> = vec![];
         let mut current_key = String::new();
         let mut current_val: Option<Elem> = None;
         let mut in_value = false;
         let mut has_complex_key = false; // Track if current key is complex (preceded by ?)
         let mut prev_tok = Tok::LBrace;
+        let mut seen_newline = false; // Track if we've crossed a newline (for indent validation)
 
         loop {
             match self.look.clone() {
@@ -1369,32 +1532,74 @@ impl<'a> Parser<'a> {
                 }
                 Tok::Eof => return Err(Error::Parse("unterminated flow mapping".into())),
                 Tok::RBrace => {
-                    // Check for trailing comma before closing brace
-                    if matches!(prev_tok, Tok::Comma) {
-                        return Err(Error::Parse("trailing comma in flow mapping".into()));
-                    }
+                    // Trailing commas are allowed per YAML 1.2.2 §7.4
                     self.bump();
                     // Process final key-value pair if any
                     let key = current_key.trim().to_string();
                     if !key.is_empty() {
-                        if !in_value {
-                            return Err(Error::Parse(
-                                "flow mapping key without value (missing colon)".into(),
-                            ));
-                        }
+                        // YAML 1.2.2 allows keys without values (implicit null)
+                        // { key } → { key: null }
                         // Check for duplicate key
-                        if entries.iter().any(|(k, _)| k == &key) {
+                        if entries.iter().any(|(k, _)| k == &MapKey::Str(key.clone())) {
                             return Err(Error::Parse(format!("duplicate key in flow mapping: '{}'", key)));
                         }
                         let val = current_val.take().unwrap_or_else(|| Elem::new(Node::Scalar(Scalar::Str(String::new()))));
-                        entries.push((key, val));
+                        entries.push((MapKey::Str(key), val));
                     }
                     break;
                 }
                 Tok::Colon => {
                     if in_value && current_val.is_some() {
-                        // We already have a value - colon not allowed here
-                        return Err(Error::Parse("unexpected colon in flow mapping value".into()));
+                        // Per YAML 1.2.2 §7.3.3, in flow context, colons are allowed in plain scalars
+                        // if NOT followed by whitespace or a flow indicator.
+                        // This handles URLs like "http://example.org" and timestamps like "12:34:56"
+                        //
+                        // IMPORTANT: Only treat colon as part of value if previous token was a string
+                        // This prevents false positives like `{a: 1 b: 2}` being parsed as `{a: "1 b:2"}`
+
+                        // Only allow colon concatenation if the previous token was a string
+                        if !matches!(prev_tok, Tok::Str(_)) {
+                            return Err(Error::Parse("unexpected colon in flow mapping value".into()));
+                        }
+
+                        // Additional check: if current value contains spaces, it's likely a multi-word value
+                        // not a URL, so reject colon concatenation
+                        if let Some(ref val) = current_val {
+                            match &val.node {
+                                Node::Scalar(Scalar::Str(s)) if s.contains(' ') => {
+                                    // Value has spaces - not a URL
+                                    return Err(Error::Parse("unexpected colon in flow mapping value".into()));
+                                }
+                                Node::Scalar(Scalar::Num { .. }) => {
+                                    // Numbers can't be part of URLs with colons
+                                    // This handles cases like {a: 1 b: 2}
+                                    return Err(Error::Parse("unexpected colon in flow mapping value".into()));
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        // Peek ahead to see what follows the colon
+                        self.bump(); // consume the colon
+                        let next = self.look.clone();
+
+                        // Per §7.3.3: colon is allowed in plain scalar if NOT followed by
+                        // whitespace or flow indicator
+                        match next {
+                            Tok::Newline | Tok::RBrace | Tok::RBracket | Tok::Comma => {
+                                // Colon followed by whitespace/flow indicator - error
+                                return Err(Error::Parse("unexpected colon in flow mapping value".into()));
+                            }
+                            _ => {
+                                // Colon not followed by whitespace/flow indicator - append to value
+                                if let Some(ref mut val) = current_val {
+                                    if let Node::Scalar(Scalar::Str(ref mut s)) = val.node {
+                                        s.push(':');
+                                    }
+                                }
+                                continue;
+                            }
+                        }
                     }
                     // Transition from key to value
                     // Empty keys are allowed in YAML 1.2.2
@@ -1403,26 +1608,23 @@ impl<'a> Parser<'a> {
                     prev_tok = Tok::Colon;
                 }
                 Tok::Comma => {
-                    if !in_value {
-                        return Err(Error::Parse(
-                            "flow mapping key without value (missing colon before comma)".into(),
-                        ));
-                    }
+                    // YAML 1.2.2 allows keys without values (implicit null)
+                    // { key, a: b } → { key: null, a: b }
                     let key = current_key.trim().to_string();
                     // Empty keys are allowed in YAML 1.2.2
                     // Check for duplicate key
-                    if entries.iter().any(|(k, _)| k == &key) {
+                    if entries.iter().any(|(k, _)| k == &MapKey::Str(key.clone())) {
                         return Err(Error::Parse(format!("duplicate key in flow mapping: '{}'", key)));
                     }
                     let val = current_val.take().unwrap_or_else(|| Elem::new(Node::Scalar(Scalar::Str(String::new()))));
-                    entries.push((key, val));
+                    entries.push((MapKey::Str(key), val));
                     current_key.clear();
                     in_value = false;
                     has_complex_key = false; // Reset for next entry
                     self.bump();
                     prev_tok = Tok::Comma;
                 }
-                Tok::Str(StrTok { text, quoted }) => {
+                Tok::Str(StrTok { text, quoted, .. }) => {
                     self.bump();
 
                     if in_value {
@@ -1431,7 +1633,11 @@ impl<'a> Parser<'a> {
                             // Append if previous was also a string (multi-word scalar)
                             if matches!(prev_tok, Tok::Str(_)) {
                                 if let Node::Scalar(Scalar::Str(ref mut s)) = val.node {
-                                    s.push(' ');
+                                    // Check if the last character is a colon (from URL/timestamp concatenation)
+                                    // If so, don't add space - just concatenate directly
+                                    if !s.ends_with(':') {
+                                        s.push(' ');
+                                    }
                                     s.push_str(&text);
                                     val.meta.prefer_quoted |= quoted;
                                 }
@@ -1455,7 +1661,7 @@ impl<'a> Parser<'a> {
                         }
                         current_key.push_str(&text);
                     }
-                    prev_tok = Tok::Str(StrTok { text, quoted });
+                    prev_tok = Tok::Str(StrTok { text, quoted, multiline: false });
                 }
                 Tok::Question => {
                     // Complex key marker - the next token is a complex key (flow sequence or mapping)
@@ -1471,7 +1677,7 @@ impl<'a> Parser<'a> {
                     if !in_value && !has_complex_key {
                         return Err(Error::Parse("flow sequence not allowed as map key (use '?' for complex keys)".into()));
                     }
-                    let node = self.parse_inline_array_node()?;
+                    let node = self.parse_inline_array_node(parent_indent)?;
                     if in_value {
                         current_val = Some(Elem::new(node));
                     } else {
@@ -1482,11 +1688,11 @@ impl<'a> Parser<'a> {
                     prev_tok = Tok::RBracket; // Simulate that we consumed a collection
                 }
                 Tok::LBrace => {
-                    // Nested flow mapping
+                    // Nested flow mapping - inherit parent_indent
                     if !in_value && !has_complex_key {
                         return Err(Error::Parse("flow mapping not allowed as map key (use '?' for complex keys)".into()));
                     }
-                    let node = self.parse_inline_map_node()?;
+                    let node = self.parse_inline_map_node(parent_indent)?;
                     if in_value {
                         current_val = Some(Elem::new(node));
                     } else {
@@ -1500,10 +1706,30 @@ impl<'a> Parser<'a> {
                     return Err(Error::Parse("unexpected ']' in flow mapping".into()));
                 }
                 Tok::Newline => {
+                    seen_newline = true;
                     self.bump();
                 }
-                Tok::Indent(_) => {
+                Tok::Indent(n) => {
                     self.bump();
+                    // Consume any additional consecutive Indent tokens (lexer quirk)
+                    while matches!(self.look, Tok::Indent(_)) {
+                        self.bump();
+                    }
+
+                    // Per YAML 1.2.2 §7.5: Flow collection continuation lines must be indented
+                    // more than the parent block context. If parent is at indent N, continuations
+                    // must be at least indent N+1.
+                    // parent_indent == usize::MAX means no parent constraint (root-level flow)
+                    if seen_newline && parent_indent != usize::MAX && n <= parent_indent {
+                        // Now check what follows after consuming all indents
+                        // If it's actual content (not whitespace/comments/closing), that's an error
+                        if !matches!(self.look, Tok::Newline | Tok::Comment(_) | Tok::RBrace) {
+                            return Err(Error::Parse(
+                                format!("flow mapping continuation must be indented more than parent context (need > {}, got {})", parent_indent, n)
+                            ));
+                        }
+                    }
+
                     // Per YAML 1.2.2 Section 8.2.3: "block styles are not allowed inside flow collections"
                     // Check if block sequence indicator follows indentation in value position
                     if in_value && matches!(self.look, Tok::Dash) {
@@ -1552,6 +1778,7 @@ impl<'a> Parser<'a> {
                 Tok::Str(StrTok {
                     text,
                     quoted: false,
+                ..
                 }) => {
                     // Handle multi-character strings like "2-" or "-2" by parsing char by char
                     let mut chars = text.chars().peekable();
@@ -1705,6 +1932,47 @@ impl<'a> Parser<'a> {
         //     let folded = fold_text(lines);
         //     apply_chomping(folded, chomp)
         // };
+        // YAML 1.2.2 §8.1.1.1: Validate that leading empty lines don't exceed first content line indentation
+        // "It is an error for any of the leading empty lines to contain more spaces than the first non-empty line"
+        if indent_indicator.is_none() {
+            // Find first non-empty content line
+            let first_content_idx = lines_with_indent
+                .iter()
+                .position(|(_, text)| !text.trim().is_empty());
+
+            if let Some(first_idx) = first_content_idx {
+                let first_content_indent = lines_with_indent[first_idx].0;
+
+                // Check all lines BEFORE first content line
+                for (idx, (indent, text)) in lines_with_indent.iter().enumerate() {
+                    if idx >= first_idx {
+                        break;
+                    }
+                    // Empty lines (blank or whitespace-only) shouldn't exceed first content indent
+                    if text.trim().is_empty() && *indent > first_content_indent {
+                        return Err(Error::Parse(
+                            format!("block scalar indentation error: leading empty line has {} spaces but first content line has only {}",
+                                indent, first_content_indent)
+                        ));
+                    }
+                }
+            } else {
+                // No content lines at all - validate empty lines don't have increasing indentation
+                // Per spec: if auto-detecting and all lines are empty, they shouldn't increase indentation
+                if !lines_with_indent.is_empty() {
+                    let min_indent = lines_with_indent.iter().map(|(i, _)| *i).min().unwrap_or(0);
+                    for (indent, text) in &lines_with_indent {
+                        if text.trim().is_empty() && *indent > min_indent {
+                            return Err(Error::Parse(
+                                format!("block scalar indentation error: empty line has {} spaces but minimum is {}",
+                                    indent, min_indent)
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
         // Determine content base indentation:
         // - With indicator k: base = parent_indent + k
         // - Without indicator: base = minimum indent of non-empty content lines
@@ -1781,6 +2049,7 @@ impl<'a> Parser<'a> {
         if let Tok::Str(StrTok {
             text,
             quoted: false,
+                ..
         }) = &self.look
         {
             let name = text.clone();
@@ -1791,7 +2060,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_line_value_or_nested(&mut self, nested_indent: usize) -> Result<Elem, Error> {
+    /// Helper to check if the current position is followed by a colon
+    /// This is used to detect flow collections being used as implicit keys (C2SP validation)
+    /// Returns true if the immediately next token is a colon, false otherwise
+    fn is_followed_by_colon(&self) -> bool {
+        matches!(self.look, Tok::Colon)
+    }
+
+    fn parse_line_value_or_nested(&mut self, nested_indent: usize, parent_indent: usize) -> Result<Elem, Error> {
         // Check for lexer errors first
         if let Tok::Error(msg) = &self.look {
             return Err(Error::Parse(msg.clone()));
@@ -1848,13 +2124,14 @@ impl<'a> Parser<'a> {
                     if colon_is_separator {
                         // Map item inside a sequence: "- k: <value>"
                         self.bump(); // consume ':'
-                        let (mut value, _vtype) = self.parse_value_after_colon(nested_indent)?;
+                        // Parent indent is nested_indent - 2 (the sequence item level)
+                        let (mut value, _vtype) = self.parse_value_after_colon(nested_indent, nested_indent.saturating_sub(2))?;
                         if !self.pending_leading_comments.is_empty() {
                             value.meta.leading_comments =
                                 std::mem::take(&mut self.pending_leading_comments);
                         }
                         let key = s.text.clone();
-                        return Ok(Elem::new(Node::Map(vec![(key, value)])));
+                        return Ok(Elem::new(Node::Map(vec![(MapKey::Str(key), value)])));
                     }
                     // else fall through to scalar handling (glued "k:v")
                 }
@@ -1871,6 +2148,43 @@ impl<'a> Parser<'a> {
                             text.push(' ');
                         }
                         text.push_str(&rest);
+                    }
+                }
+
+                // Check for continuation lines (indented more than parent)
+                // After the first line, if we see newline + deeper indent, continue
+                loop {
+                    match self.look.clone() {
+                        Tok::Newline => {
+                            self.bump();
+                            // Check if next line is indented more than parent
+                            if let Tok::Indent(continuation_indent) = self.look {
+                                // Continuation lines must be indented more than the parent context
+                                if continuation_indent > parent_indent {
+                                    self.bump(); // consume indent
+                                    // Collect this continuation line
+                                    if let Tok::Str(cont_str) = &self.look {
+                                        let cont_text = cont_str.text.clone();
+                                        self.bump();
+                                        // Add space and continuation text
+                                        text.push(' ');
+                                        text.push_str(&cont_text);
+                                        // Continue checking for more lines
+                                        continue;
+                                    }
+                                }
+                            }
+                            // Not a continuation, done collecting
+                            break;
+                        }
+                        Tok::Comment(_) => {
+                            // Skip comments and continue checking
+                            break;
+                        }
+                        _ => {
+                            // No newline, done collecting
+                            break;
+                        }
                     }
                 }
 
@@ -1891,7 +2205,7 @@ impl<'a> Parser<'a> {
                 return Ok(e);
             }
             Tok::LBracket => {
-                let node = self.parse_inline_array_node()?;
+                let node = self.parse_inline_array_node(parent_indent)?;
                 let mut e = Elem::new(node);
                 if e.meta.tag.is_none() {
                     e.meta.tag = meta.tag.take();
@@ -1903,7 +2217,7 @@ impl<'a> Parser<'a> {
                 Ok(e)
             }
             Tok::LBrace => {
-                let node = self.parse_inline_map_node()?;
+                let node = self.parse_inline_map_node(parent_indent)?;
                 let mut e = Elem::new(node);
                 if e.meta.tag.is_none() {
                     e.meta.tag = meta.tag.take();

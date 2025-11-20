@@ -1,4 +1,17 @@
-// tests/emitter_block_scalars.rs
+//! Block Scalar Emission Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §8.1: Block Scalar Styles
+//! - §8.1.1: Block Scalar Headers
+//! - §8.1.2: Literal Style (|)
+//! - §8.1.3: Folded Style (>)
+//!
+//! **Purpose:**
+//! These are unit tests for block scalar emission. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 fn doc(s: &str) -> Doc {

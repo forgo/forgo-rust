@@ -1,9 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_7_flow_styles.rs
 //! YAML 1.2.2 Chapter 7: Flow Style Productions
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-7-flow-style-productions
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-7-flow-style-productions
 //!
-//! Flow styles use explicit indicators rather than indentation to denote structure.
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 7. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_7_Y_ZZ_description` where 7 is the chapter, Y is the section, and
+//! ZZ is the test number.
+//!
+//! **Coverage:**
+//! Alias nodes, empty nodes, flow scalars (double-quoted, single-quoted, plain), flow collections
 
 #[path = "../common/mod.rs"]
 mod common;
@@ -546,11 +554,13 @@ fn ch_7_7_1_01_missing_comma_in_sequence() {
 
 #[test]
 fn ch_7_7_1_02_trailing_comma_in_sequence() {
+    // Trailing commas ARE allowed in YAML 1.2.2 flow sequences
+    // See official test suite test 5C5M and spec Example 7.15
     let input = "[a, b, c,]\n";
     let result = Doc::from_str(input);
     assert!(
-        result.is_err(),
-        "Flow sequence should reject trailing comma"
+        result.is_ok(),
+        "Flow sequence should allow trailing comma (YAML 1.2.2)"
     );
 }
 
@@ -566,21 +576,27 @@ fn ch_7_7_1_03_missing_comma_in_mapping() {
 
 #[test]
 fn ch_7_7_1_04_trailing_comma_in_mapping() {
+    // Trailing commas ARE allowed in YAML 1.2.2 flow mappings
+    // See official test suite test 5C5M and spec Example 7.15
     let input = "{a: 1, b: 2,}\n";
     let result = Doc::from_str(input);
     assert!(
-        result.is_err(),
-        "Flow mapping should reject trailing comma"
+        result.is_ok(),
+        "Flow mapping should allow trailing comma (YAML 1.2.2)"
     );
 }
 
 #[test]
 fn ch_7_7_1_05_missing_colon_in_mapping() {
+    // This test was originally written to expect failure, but the official YAML test suite
+    // (test 8KB6) shows that plain scalar keys without colons are valid and get implicit null values.
+    // Example: { single line, a: b} is valid and parses as { "single line": null, "a": "b" }
+    // Therefore {a 1, b: 2} should parse as { "a 1": null, "b": 2 }
     let input = "{a 1, b: 2}\n";
     let result = Doc::from_str(input);
     assert!(
-        result.is_err(),
-        "Flow mapping should reject missing colon in key-value pair"
+        result.is_ok(),
+        "Flow mapping should allow plain scalar keys without colons (implicit null value)"
     );
 }
 

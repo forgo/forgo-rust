@@ -1,9 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_8_block_styles.rs
 //! YAML 1.2.2 Chapter 8: Block Style Productions
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-8-block-style-productions
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-8-block-style-productions
 //!
-//! Block styles use indentation to denote structure.
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 8. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_8_Y_ZZ_description` where 8 is the chapter, Y is the section, and
+//! ZZ is the test number.
+//!
+//! **Coverage:**
+//! Block scalar styles (literal, folded), block scalar headers, block collections (sequences, mappings)
 
 #[path = "../common/mod.rs"]
 mod common;

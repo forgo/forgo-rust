@@ -1,3 +1,16 @@
+//! Editor String Normalization Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §7.4.1: Flow Sequences (target format for normalization)
+//! - §8.2.1: Block Sequences (source format)
+//! - §7.3: Flow Scalar Styles (quoting behavior)
+//!
+//! **Purpose:**
+//! These integration tests validate the editor API's string list normalization
+//! functionality, which converts between block and flow sequence representations.
+//! This tests the `normalize_string_list` utility function across different
+//! quoting scenarios and formats.
+
 use forgo_lib_yaml::{Doc, Seg, normalize_string_list};
 
 fn normalize_indent(s: &str) -> String {

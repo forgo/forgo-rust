@@ -1,3 +1,17 @@
+//! Document Marker Parsing Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §9.1.2: Document Markers (--- and ...)
+//! - §9.1.3: Bare Documents
+//! - §9.2: Streams
+//! - §6.8.1: Block Scalar Context (forbids markers)
+//!
+//! **Purpose:**
+//! These are unit tests for document marker parsing. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::{Doc, Error, Node};
 
 fn assert_block_err(s: &str) {

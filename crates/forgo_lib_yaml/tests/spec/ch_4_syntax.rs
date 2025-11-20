@@ -1,10 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_4_syntax.rs
 //! YAML 1.2.2 Chapter 4: Syntax Conventions
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-4-syntax-conventions
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-4-syntax-conventions
 //!
-//! This chapter defines the BNF-style notation used throughout the spec.
-//! While mostly meta-level, some syntax edge cases are testable.
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 4. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_4_Y_ZZ_description` where 4 is the chapter, Y is the section, and
+//! ZZ is the test number.
+//!
+//! **Coverage:**
+//! BNF notation, production parameters, context parameters, indentation rules
 
 #[path = "../common/mod.rs"]
 mod common;

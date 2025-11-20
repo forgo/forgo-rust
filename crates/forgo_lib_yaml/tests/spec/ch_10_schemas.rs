@@ -1,12 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_10_schemas.rs
 //! YAML 1.2.2 Chapter 10: Recommended Schemas
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-10-recommended-schemas
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-10-recommended-schemas
 //!
-//! YAML defines three recommended schemas:
-//! - Failsafe Schema: Only strings, mappings, sequences
-//! - JSON Schema: Compatible with JSON (null, bool, int, float, str)
-//! - Core Schema: Extended types with more flexible parsing
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 10. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_10_Y_ZZ_description` where 10 is the chapter, Y is the section, and
+//! ZZ is the test number.
+//!
+//! **Coverage:**
+//! Failsafe schema, JSON schema, Core schema, tag resolution
 
 #[path = "../common/mod.rs"]
 mod common;

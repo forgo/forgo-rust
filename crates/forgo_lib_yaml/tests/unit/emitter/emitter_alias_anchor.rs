@@ -1,4 +1,16 @@
-// tests/emitter_alias_anchor.rs
+//! Anchor and Alias Emission Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §6.9.2: Anchor (c-ns-anchor-property)
+//! - §7.1: Alias nodes (c-ns-alias-node)
+//! - §9.1: Documents with anchors and aliases
+//!
+//! **Purpose:**
+//! These are unit tests for anchor and alias emission. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 fn doc(s: &str) -> Doc {

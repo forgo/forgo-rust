@@ -5,7 +5,7 @@
 //! - Node::map(), seq(), string(), number(), boolean(), null()
 
 use crate::api::*;
-use forgo_lib_yaml::{Node, Scalar};
+use forgo_lib_yaml::{MapKey, Node, Scalar};
 
 // ============================================================================
 // Node Constructors Tests
@@ -163,7 +163,7 @@ fn test_nested_structure_with_constructors() {
     let mut inner_map: Vec<(String, _)> = vec![];
     inner_map.push(("inner".into(), str_elem("value")));
 
-    let mut outer_map: Vec<(String, _)> = vec![];
+    let mut outer_map: Vec<(MapKey, _)> = vec![];
     outer_map.push(("outer".into(), map_elem()));
 
     // This shows we need better helpers - we'll add them next!

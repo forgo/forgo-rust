@@ -1,3 +1,18 @@
+//! Comment Preservation Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §3.2.3.3: Comments in presentation stream
+//! - §6.6: Comment syntax and placement
+//! - Throughout §7 (Flow Styles): Comments in flow collections
+//! - Throughout §8 (Block Styles): Comments in block collections
+//!
+//! **Purpose:**
+//! These tests validate that comments are preserved during parse/emit cycles
+//! across all YAML constructs. While the spec defines comment syntax (§6.6),
+//! comment *preservation* is an implementation quality goal beyond basic
+//! spec compliance. The spec tests in `spec/ch_6_structural.rs` validate
+//! basic comment syntax; these tests validate preservation behavior.
+
 use forgo_lib_yaml::Doc;
 
 fn show(tag: &str, s: &str) {

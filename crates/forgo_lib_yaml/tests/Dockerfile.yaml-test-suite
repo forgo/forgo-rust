@@ -1,0 +1,56 @@
+# Dockerfile for running the official YAML test suite
+# This eliminates environment-specific issues and makes testing reproducible
+#
+# Build context should be the repository root:
+#   docker build -f crates/forgo_lib_yaml/tests/Dockerfile.yaml-test-suite -t forgo-yaml-test-suite .
+
+# Use Rust nightly for edition 2024 support
+FROM rustlang/rust:nightly-slim
+
+# Install git for cloning the test suite
+RUN apt-get update && \
+    apt-get install -y git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create working directory
+WORKDIR /workspace
+
+# Copy workspace Cargo.toml first (for dependency caching)
+COPY Cargo.toml /workspace/Cargo.toml
+
+# Copy all workspace member Cargo.toml files (needed for workspace resolution)
+COPY crates/forgo/Cargo.toml /workspace/crates/forgo/Cargo.toml
+COPY crates/forgo_dev/Cargo.toml /workspace/crates/forgo_dev/Cargo.toml
+COPY crates/forgo_lib_cli/Cargo.toml /workspace/crates/forgo_lib_cli/Cargo.toml
+COPY crates/forgo_lib_yaml/Cargo.toml /workspace/crates/forgo_lib_yaml/Cargo.toml
+
+# Create stub source files for other workspace members (to satisfy cargo)
+# This prevents "no targets specified" errors while keeping the image small
+RUN mkdir -p /workspace/crates/forgo/src && \
+    echo "fn main() {}" > /workspace/crates/forgo/src/main.rs && \
+    mkdir -p /workspace/crates/forgo_dev/src && \
+    echo "fn main() {}" > /workspace/crates/forgo_dev/src/main.rs && \
+    mkdir -p /workspace/crates/forgo_lib_cli/src && \
+    echo "pub fn stub() {}" > /workspace/crates/forgo_lib_cli/src/lib.rs
+
+# Copy only the forgo_lib_yaml source (the actual crate we're testing)
+COPY crates/forgo_lib_yaml/src /workspace/crates/forgo_lib_yaml/src
+
+# Copy test files (but not yaml_test_suite directory - we'll clone it fresh)
+COPY crates/forgo_lib_yaml/tests/common /workspace/crates/forgo_lib_yaml/tests/common
+COPY crates/forgo_lib_yaml/tests/yaml_test_suite_official.rs /workspace/crates/forgo_lib_yaml/tests/
+COPY crates/forgo_lib_yaml/tests/test_harness.rs /workspace/crates/forgo_lib_yaml/tests/
+
+# Clone the official YAML test suite (fresh inside container)
+RUN cd /workspace/crates/forgo_lib_yaml/tests && \
+    git clone --depth 1 https://github.com/yaml/yaml-test-suite.git yaml_test_suite
+
+# Build dependencies (this layer will be cached if Cargo.toml doesn't change)
+# Build only the forgo_lib_yaml package and its tests
+RUN cd /workspace && cargo build --package forgo_lib_yaml --tests
+
+# Set the working directory for test execution
+WORKDIR /workspace/crates/forgo_lib_yaml
+
+# Default command: run the official test suite for the forgo_lib_yaml package
+CMD ["cargo", "test", "--package", "forgo_lib_yaml", "--test", "yaml_test_suite_official", "--", "--nocapture"]

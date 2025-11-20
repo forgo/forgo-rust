@@ -21,7 +21,7 @@ mod parser_helpers;
 mod util;
 
 pub use crate::lexer::{Lexer, Tok};
-pub use ast::{Doc, Elem, Error, IntoPath, Node, Scalar, Seg};
+pub use ast::{Doc, Elem, Error, IntoPath, MapKey, Node, Scalar, Seg};
 pub use editor::{edit_file_in_place, normalize_string_list};
 pub use util::needs_quotes;
 
@@ -39,7 +39,7 @@ pub use util::needs_quotes;
 /// use forgo_lib_yaml::parse;
 ///
 /// let doc = parse("name: test").unwrap();
-/// assert_eq!(doc.root().node().as_map().unwrap()[0].0, "name");
+/// assert_eq!(doc.root().node().as_map().unwrap()[0].0.as_str(), Some("name"));
 /// ```
 pub fn parse(input: &str) -> Result<Doc, Error> {
     Doc::from_str(input)
