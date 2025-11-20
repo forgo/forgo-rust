@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  yaml-test-suite:
+    build:
+      context: ../../..  # Build from repo root
+      dockerfile: crates/forgo_lib_yaml/tests/Dockerfile.yaml-test-suite
+    image: forgo-yaml-test-suite:latest
+    container_name: forgo-yaml-test-suite
+    volumes:
+      # Mount source code for live development
+      - ../src:/workspace/crates/forgo_lib_yaml/src:ro
+      # Mount test files
+      - ./common:/workspace/crates/forgo_lib_yaml/tests/common:ro
+      - ./yaml_test_suite_official.rs:/workspace/crates/forgo_lib_yaml/tests/yaml_test_suite_official.rs:ro
+    environment:
+      RUST_BACKTRACE: "1"
+    command: cargo test --package forgo_lib_yaml --test yaml_test_suite_official -- --nocapture

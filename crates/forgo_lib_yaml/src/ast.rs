@@ -314,10 +314,117 @@ impl Elem {
     }
 }
 
+/// Map key - can be a simple string or a complex element (collection)
+#[derive(Clone, Debug, PartialEq)]
+pub enum MapKey {
+    /// Simple scalar key (most common case)
+    Str(String),
+    /// Complex key (sequence or mapping as a key)
+    Complex(Box<Elem>),
+}
+
+impl MapKey {
+    /// Create a string key
+    pub fn from_str(s: impl Into<String>) -> Self {
+        MapKey::Str(s.into())
+    }
+
+    /// Create a complex key
+    pub fn from_elem(elem: Elem) -> Self {
+        MapKey::Complex(Box::new(elem))
+    }
+
+    /// Get as string if this is a string key
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            MapKey::Str(s) => Some(s),
+            MapKey::Complex(_) => None,
+        }
+    }
+
+    /// Get as element if this is a complex key
+    pub fn as_elem(&self) -> Option<&Elem> {
+        match self {
+            MapKey::Str(_) => None,
+            MapKey::Complex(e) => Some(e),
+        }
+    }
+
+    /// Check if this is a string key
+    pub fn is_str(&self) -> bool {
+        matches!(self, MapKey::Str(_))
+    }
+
+    /// Check if this is a complex key
+    pub fn is_complex(&self) -> bool {
+        matches!(self, MapKey::Complex(_))
+    }
+}
+
+// Allow comparing MapKey with &str for convenience
+impl PartialEq<str> for MapKey {
+    fn eq(&self, other: &str) -> bool {
+        match self {
+            MapKey::Str(s) => s == other,
+            MapKey::Complex(_) => false,
+        }
+    }
+}
+
+impl PartialEq<String> for MapKey {
+    fn eq(&self, other: &String) -> bool {
+        match self {
+            MapKey::Str(s) => s == other,
+            MapKey::Complex(_) => false,
+        }
+    }
+}
+
+impl PartialEq<&str> for MapKey {
+    fn eq(&self, other: &&str) -> bool {
+        match self {
+            MapKey::Str(s) => s == *other,
+            MapKey::Complex(_) => false,
+        }
+    }
+}
+
+// Display for MapKey
+impl fmt::Display for MapKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MapKey::Str(s) => write!(f, "{}", s),
+            MapKey::Complex(elem) => {
+                // For complex keys, we need to serialize them
+                // This is a simplified representation
+                match &elem.node {
+                    Node::Seq(_) => write!(f, "[...]"),
+                    Node::Map(_) => write!(f, "{{...}}"),
+                    Node::Scalar(s) => write!(f, "{}", s.to_string()),
+                    Node::Alias(a) => write!(f, "*{}", a),
+                }
+            }
+        }
+    }
+}
+
+// Allow creating MapKey from String
+impl From<String> for MapKey {
+    fn from(s: String) -> Self {
+        MapKey::Str(s)
+    }
+}
+
+impl From<&str> for MapKey {
+    fn from(s: &str) -> Self {
+        MapKey::Str(s.to_string())
+    }
+}
+
 /// AST node for the YAML subset.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
-    Map(Vec<(String, Elem)>),
+    Map(Vec<(MapKey, Elem)>),
     Seq(Vec<Elem>),
     Scalar(Scalar),
     /// Alias reference: `*name`
@@ -358,7 +465,7 @@ impl Node {
     // ========================================================================
 
     /// Get map if this node is a map
-    pub fn as_map(&self) -> Option<&Vec<(String, Elem)>> {
+    pub fn as_map(&self) -> Option<&Vec<(MapKey, Elem)>> {
         match self {
             Node::Map(m) => Some(m),
             _ => None,
@@ -366,7 +473,7 @@ impl Node {
     }
 
     /// Get mutable map if this node is a map
-    pub fn as_map_mut(&mut self) -> Option<&mut Vec<(String, Elem)>> {
+    pub fn as_map_mut(&mut self) -> Option<&mut Vec<(MapKey, Elem)>> {
         match self {
             Node::Map(m) => Some(m),
             _ => None,
@@ -682,12 +789,12 @@ impl Doc {
     pub fn visit_maps_mut<P, F>(&mut self, path: P, mut f: F) -> bool
     where
         P: IntoPath,
-        F: FnMut(&mut Vec<(String, Elem)>) -> bool,
+        F: FnMut(&mut Vec<(MapKey, Elem)>) -> bool,
     {
         let path = path.into_path();
         fn go<F>(node: &mut Elem, path: &[Seg], hit: &mut bool, f: &mut F)
         where
-            F: FnMut(&mut Vec<(String, Elem)>) -> bool,
+            F: FnMut(&mut Vec<(MapKey, Elem)>) -> bool,
         {
             if path.is_empty() {
                 if let Node::Map(ref mut m) = node.node {

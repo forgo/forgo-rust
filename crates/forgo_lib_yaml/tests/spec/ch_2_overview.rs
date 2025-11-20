@@ -1,10 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_2_overview.rs
 //! YAML 1.2.2 Chapter 2: Language Overview
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-2-language-overview
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-2-language-overview
 //!
-//! This chapter provides a high-level overview of YAML through practical examples.
-//! These tests validate that all the examples from the spec work correctly.
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 2. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_2_Y_ZZ_description` where 2 is the chapter, Y is the section, and
+//! ZZ is the test number.
+//!
+//! **Coverage:**
+//! Overview examples demonstrating YAML features: collections, structures, scalars, tags, complete documents
 
 #[path = "../common/mod.rs"]
 mod common;
@@ -653,22 +660,24 @@ fn ch_2_error_02_reserved_backtick_indicator() {
 
 #[test]
 fn ch_2_error_03_trailing_comma_flow_sequence() {
-    // Trailing comma in flow sequence is not allowed in YAML
+    // Trailing commas ARE allowed in YAML 1.2.2 flow sequences
+    // See official test suite test 5C5M - this test was incorrect
     let input = "[a, b, c,]\n";
     let result = Doc::from_str(input);
 
-    // Should be an error
-    assert!(result.is_err(), "Trailing comma in flow sequence should be rejected");
+    // Should parse successfully
+    assert!(result.is_ok(), "Trailing comma in flow sequence should be allowed (YAML 1.2.2)");
 }
 
 #[test]
 fn ch_2_error_04_trailing_comma_flow_mapping() {
-    // Trailing comma in flow mapping is not allowed
+    // Trailing commas ARE allowed in YAML 1.2.2 flow mappings
+    // See official test suite test 5C5M - this test was incorrect
     let input = "{a: 1, b: 2,}\n";
     let result = Doc::from_str(input);
 
-    // Should be an error
-    assert!(result.is_err(), "Trailing comma in flow mapping should be rejected");
+    // Should parse successfully
+    assert!(result.is_ok(), "Trailing comma in flow mapping should be allowed (YAML 1.2.2)");
 }
 
 #[test]

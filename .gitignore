@@ -17,3 +17,12 @@ target/
 #.idea/
 
 .DS_Store
+
+# Official YAML Test Suite (cloned locally, not committed)
+# To set up: cd crates/forgo_lib_yaml/tests && git clone https://github.com/yaml/yaml-test-suite.git yaml_test_suite
+crates/forgo_lib_yaml/tests/yaml_test_suite/
+
+# Official YAML Test Suite - failure analysis output
+crates/forgo_lib_yaml/tests/test-failure-analysis/
+crates/forgo_lib_yaml/tests/failed_test_ids.txt
+crates/forgo_lib_yaml/tests/test-output.log

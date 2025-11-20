@@ -97,11 +97,11 @@ server:
     doc.visit_maps_mut(&["server"], |map| {
         // Add new configuration keys
         map.push((
-            "workers".to_string(),
+            "workers".into(),
             Elem::number(4).with_comment("Worker threads"),
         ));
         map.push((
-            "timeout".to_string(),
+            "timeout".into(),
             Elem::number(30),
         ));
         true

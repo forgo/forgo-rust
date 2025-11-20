@@ -12,7 +12,7 @@
 //!
 //! Run this example with: `cargo run --example ci_config_editor`
 
-use forgo_lib_yaml::{parse, stringify, Elem, Node};
+use forgo_lib_yaml::{parse, stringify, Elem, MapKey, Node};
 use std::io::{self, Write};
 
 fn main() {
@@ -157,7 +157,7 @@ fn display_summary(doc: &forgo_lib_yaml::Doc) {
         // Show triggers
         if let Some((_, on_elem)) = root_map.iter().find(|(k, _)| k == "on") {
             if let Some(on_map) = on_elem.node().as_map() {
-                let triggers: Vec<&str> = on_map.iter().map(|(k, _)| k.as_str()).collect();
+                let triggers: Vec<&str> = on_map.iter().filter_map(|(k, _)| k.as_str()).collect();
                 println!("  Triggers: {}", triggers.join(", "));
             }
         }
@@ -206,28 +206,28 @@ fn add_caching_to_jobs(doc: &mut forgo_lib_yaml::Doc) {
 
         if !has_cache {
             // Build cache step
-            let mut cache_step = vec![];
+            let mut cache_step: Vec<(MapKey, Elem)> = vec![];
             cache_step.push((
-                "name".to_string(),
+                "name".into(),
                 Elem::string("Cache dependencies"),
             ));
             cache_step.push((
-                "uses".to_string(),
+                "uses".into(),
                 Elem::string("actions/cache@v3"),
             ));
 
-            let mut with_map = vec![];
+            let mut with_map: Vec<(MapKey, Elem)> = vec![];
             with_map.push((
-                "path".to_string(),
+                "path".into(),
                 Elem::string("~/.cargo\ntarget/").prefer_block(),
             ));
             with_map.push((
-                "key".to_string(),
+                "key".into(),
                 Elem::string("${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"),
             ));
 
             cache_step.push((
-                "with".to_string(),
+                "with".into(),
                 Elem::new(Node::Map(with_map)),
             ));
 
@@ -294,40 +294,40 @@ fn add_security_scan_job(doc: &mut forgo_lib_yaml::Doc) {
         }
 
         // Build security scan job
-        let mut security_job = vec![];
+        let mut security_job: Vec<(MapKey, Elem)> = vec![];
         security_job.push((
-            "runs-on".to_string(),
+            "runs-on".into(),
             Elem::string("ubuntu-22.04"),
         ));
 
         let steps = vec![
             {
-                let mut step = vec![];
-                step.push(("name".to_string(), Elem::string("Checkout code")));
-                step.push(("uses".to_string(), Elem::string("actions/checkout@v2")));
+                let mut step: Vec<(MapKey, Elem)> = vec![];
+                step.push(("name".into(), Elem::string("Checkout code")));
+                step.push(("uses".into(), Elem::string("actions/checkout@v2")));
                 Elem::new(Node::Map(step))
             },
             {
-                let mut step = vec![];
-                step.push(("name".to_string(), Elem::string("Run cargo audit")));
-                step.push(("run".to_string(), Elem::string("cargo install cargo-audit && cargo audit")));
+                let mut step: Vec<(MapKey, Elem)> = vec![];
+                step.push(("name".into(), Elem::string("Run cargo audit")));
+                step.push(("run".into(), Elem::string("cargo install cargo-audit && cargo audit")));
                 Elem::new(Node::Map(step))
             },
             {
-                let mut step = vec![];
-                step.push(("name".to_string(), Elem::string("Run cargo deny")));
-                step.push(("run".to_string(), Elem::string("cargo install cargo-deny && cargo deny check")));
+                let mut step: Vec<(MapKey, Elem)> = vec![];
+                step.push(("name".into(), Elem::string("Run cargo deny")));
+                step.push(("run".into(), Elem::string("cargo install cargo-deny && cargo deny check")));
                 Elem::new(Node::Map(step))
             },
         ];
 
         security_job.push((
-            "steps".to_string(),
+            "steps".into(),
             Elem::new(Node::Seq(steps)),
         ));
 
         jobs_map.push((
-            "security-scan".to_string(),
+            "security-scan".into(),
             Elem::new(Node::Map(security_job))
                 .with_leading_comments(vec![
                     "Security scanning job".to_string(),

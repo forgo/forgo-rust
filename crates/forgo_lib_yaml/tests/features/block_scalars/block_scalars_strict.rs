@@ -1,3 +1,19 @@
+//! Block Scalar Strict Specification Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §8.1.1.1: Block Indentation Indicator
+//! - §8.1.1.2: Block Chomping Indicator
+//! - §8.1.2: Literal Style (line-by-line preservation)
+//! - §8.1.3: Folded Style (line folding rules)
+//!
+//! **Purpose:**
+//! These tests provide comprehensive coverage of block scalar edge cases and
+//! strict spec compliance. They validate: indent indicators with exact spacing
+//! requirements, chomping indicators (`-`, `+`, clip), indicator ordering,
+//! content line indentation rules, and folding behavior. These tests complement
+//! the basic tests in `block_scalars.rs` by ensuring correct handling of all
+//! spec-defined behaviors.
+
 use forgo_lib_yaml::Doc;
 
 /// Helper: parse, then emit, and check the body content is correct.

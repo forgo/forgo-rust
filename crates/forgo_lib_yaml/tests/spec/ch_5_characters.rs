@@ -1,15 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_5_characters.rs
 //! YAML 1.2.2 Chapter 5: Character Productions
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-5-character-productions
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-5-character-productions
 //!
-//! This chapter defines the character-level requirements for YAML:
-//! - Character set (printable Unicode subset)
-//! - Character encodings (UTF-8, UTF-16, UTF-32)
-//! - Indicator characters (-, ?, :, etc.)
-//! - Line breaks (LF, CR, CRLF)
-//! - White space (space, tab)
-//! - Escaped characters
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 5. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_5_Y_ZZ_description` where 5 is the chapter, Y is the section, and
+//! ZZ is the test number.
+//!
+//! **Coverage:**
+//! Character set, encodings, indicators, line breaks, white space, escape sequences
 
 #[path = "../common/mod.rs"]
 mod common;

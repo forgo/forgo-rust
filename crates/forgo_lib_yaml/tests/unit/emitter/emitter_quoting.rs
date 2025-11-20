@@ -1,4 +1,17 @@
-// tests/emitter_quoting.rs
+//! Quote Handling Emission Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §7.3: Flow Scalar Styles
+//! - §7.3.1: Double-Quoted Style
+//! - §7.3.2: Single-Quoted Style
+//! - §5.7: Escaped Characters
+//!
+//! **Purpose:**
+//! These are unit tests for quote handling in emission. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 fn doc(s: &str) -> Doc {

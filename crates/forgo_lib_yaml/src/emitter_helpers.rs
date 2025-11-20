@@ -1,21 +1,85 @@
 // crates/forgo_lib_yaml/src/emitter_helpers.rs
 //! Helper functions for YAML emission.
 
-use crate::ast::Scalar;
+use crate::ast::{Elem, MapKey, Node, Scalar};
 use crate::util::needs_quotes;
 
 /// Emit a mapping key, quoting if necessary.
-pub(crate) fn emit_key(k: &str, out: &mut String) {
-    if k == "<<" {
-        out.push_str("<<");
-        return;
+/// For complex keys (sequences/maps), emits using explicit `?` syntax in flow style.
+pub(crate) fn emit_key(k: &MapKey, out: &mut String) {
+    if let Some(s) = k.as_str() {
+        // String key
+        if s == "<<" {
+            out.push_str("<<");
+            return;
+        }
+        // In block context, keys containing colons must be quoted
+        // because they would be misinterpreted as key-value separators
+        if s.contains(':') || needs_quotes(s) {
+            emit_quoted(s, out);
+        } else {
+            out.push_str(s);
+        }
+    } else if let Some(elem) = k.as_elem() {
+        // Complex key - emit using explicit `?` syntax in flow style
+        out.push_str("? ");
+        emit_elem_flow(elem, out);
     }
-    // In block context, keys containing colons must be quoted
-    // because they would be misinterpreted as key-value separators
-    if k.contains(':') || needs_quotes(k) {
-        emit_quoted(k, out);
-    } else {
-        out.push_str(k);
+}
+
+/// Emit an element in flow style (for complex keys)
+fn emit_elem_flow(elem: &Elem, out: &mut String) {
+    match &elem.node {
+        Node::Seq(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                emit_elem_flow(item, out);
+            }
+            out.push(']');
+        }
+        Node::Map(entries) => {
+            out.push('{');
+            for (i, (k, v)) in entries.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                // Recursively emit key in flow style
+                if let Some(s) = k.as_str() {
+                    if s.contains(':') || s.contains(',') || needs_quotes(s) {
+                        emit_quoted(s, out);
+                    } else {
+                        out.push_str(s);
+                    }
+                } else if let Some(key_elem) = k.as_elem() {
+                    out.push_str("? ");
+                    emit_elem_flow(key_elem, out);
+                    out.push_str(" :");
+                    out.push(' ');
+                    emit_elem_flow(v, out);
+                    continue;
+                }
+                out.push_str(": ");
+                emit_elem_flow(v, out);
+            }
+            out.push('}');
+        }
+        Node::Scalar(Scalar::Str(s)) => {
+            if s.contains(':') || s.contains(',') || s.contains('[') || s.contains(']') || s.contains('{') || s.contains('}') || needs_quotes(s) {
+                emit_quoted(s, out);
+            } else {
+                out.push_str(s);
+            }
+        }
+        Node::Scalar(s) => {
+            out.push_str(&s.to_string());
+        }
+        Node::Alias(a) => {
+            out.push('*');
+            out.push_str(a);
+        }
     }
 }
 
@@ -65,18 +129,26 @@ pub(crate) fn emit_scalar_with_ctx(
                 emit_quoted(t, out);
                 return;
             }
-            let mut normalized = t.clone();
-            normalize_colon_spacing_inplace(&mut normalized);
 
-            if t.contains(": ") && !normalized.contains("://") {
+            // Check if string needs quoting to avoid ambiguity
+            // Per YAML 1.2.2 §7.3.3, colons in plain scalars are allowed when
+            // NOT followed by whitespace (e.g., "k:v", "http://example.com")
+            //
+            // Only quote if contains ": " (colon-space) which could be interpreted
+            // as a key-value separator, UNLESS it's clearly a URL pattern
+
+            let has_colon_space = t.contains(": ");
+
+            // Quote if we have ": " (colon-space), unless it's clearly a URL
+            if has_colon_space && !t.contains("://") {
                 emit_quoted(t, out);
                 return;
             }
 
-            if needs_quotes(&normalized) {
+            if needs_quotes(t) {
                 emit_quoted(t, out);
             } else {
-                out.push_str(&normalized);
+                out.push_str(t);
             }
         }
         Scalar::Bool(b) => out.push_str(if *b { "true" } else { "false" }),

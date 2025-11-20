@@ -1,3 +1,17 @@
+//! Core Parser Functionality Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §6: Basic Structures
+//! - §7: Flow Styles
+//! - §8: Block Styles
+//! - §9: Document Stream Productions
+//!
+//! **Purpose:**
+//! These are unit tests for core parser functionality. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::{Doc, Elem, Error, Node, Scalar};
 
 fn doc(s: &str) -> Doc {
@@ -124,15 +138,19 @@ fn assert_parse_err(input: &str, needle: &str) {
 }
 
 #[test]
-fn reject_yaml_version_other_than_1_2_1_1() {
+fn accept_yaml_version_1_1() {
+    // Per YAML spec Example 6.14, we should accept YAML 1.1/1.3 and attempt to parse
     let s = "%YAML 1.1\n---\na: 1\n";
-    assert_parse_err(s, "unsupported %YAML");
+    let result = Doc::from_str(s);
+    assert!(result.is_ok(), "Should accept YAML 1.1 and parse with 1.2 rules");
 }
 
 #[test]
-fn reject_yaml_version_other_than_1_2_1_3() {
+fn accept_yaml_version_1_3() {
+    // Per YAML spec Example 6.14, we should accept YAML 1.3 and attempt to parse
     let s = "%YAML 1.3\n---\na: 1\n";
-    assert_parse_err(s, "unsupported %YAML");
+    let result = Doc::from_str(s);
+    assert!(result.is_ok(), "Should accept YAML 1.3 and parse with 1.2 rules");
 }
 
 #[test]

@@ -1,3 +1,17 @@
+//! Anchor and Alias Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §3.2.2.2: Anchors and Aliases in serialization tree
+//! - §6.9.2: Node Anchors (`&anchor` and `*alias`)
+//! - §7.1: Alias Nodes in flow style
+//! - §10.1.1.1-3: Merge key `<<` (Failsafe schema extension)
+//!
+//! **Purpose:**
+//! These tests validate anchor definition, alias resolution, and merge key
+//! behavior. The spec tests in `spec/ch_6_structural.rs` cover basic anchor
+//! syntax; these tests validate the full anchor/alias mechanism including
+//! merge keys and round-trip preservation.
+
 use forgo_lib_yaml::{Doc, Node, Scalar};
 
 fn doc(s: &str) -> Doc {
@@ -111,4 +125,35 @@ ref: *def
         out.contains("ref: *def"),
         "alias value not emitted inline:\n{out}"
     );
+}
+
+#[test]
+fn test_26dv_alias_as_implicit_key() {
+    // Test case 26DV: Aliases should be valid as implicit keys
+    // This was previously failing with "flow collections cannot be used as implicit keys"
+    let input = r#"top1:
+  key1: &alias1 scalar1
+top2:
+  *alias1 : scalar2
+"#;
+
+    // The main goal is that this parses successfully
+    let d = doc(input);
+
+    // Verify basic structure
+    let Node::Map(root) = d.root().node() else {
+        panic!("root not a map");
+    };
+
+    // Check top1 contains the anchor
+    let (_, top1) = root.iter().find(|(k, _)| k == "top1").expect("top1 missing");
+    let Node::Map(top1_map) = top1.node() else {
+        panic!("top1 not a map");
+    };
+    let (_, key1_val) = top1_map.iter().find(|(k, _)| k == "key1").expect("key1 missing");
+    assert_eq!(key1_val.meta.anchor.as_deref(), Some("alias1"), "anchor not attached");
+
+    // Check top2 exists - it should parse successfully with alias as key
+    let (_k, _v) = root.iter().find(|(k, _)| k == "top2").expect("top2 missing");
+    // The fact that it parsed is the main test - aliases as keys are now allowed
 }

@@ -1,3 +1,16 @@
+//! General Emitter Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §7: Flow Styles
+//! - §8: Block Styles
+//! - §10.2: Serialization and presentation
+//!
+//! **Purpose:**
+//! These are unit tests for the YAML emitter. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 fn norm_indent(s: &str) -> String {

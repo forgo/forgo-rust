@@ -1,9 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_9_documents.rs
 //! YAML 1.2.2 Chapter 9: Document Stream Productions
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-9-document-stream-productions
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-9-document-stream-productions
 //!
-//! Document stream productions define how YAML documents are organized in streams.
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 9. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_9_Y_ZZ_description` where 9 is the chapter, Y is the section, and
+//! ZZ is the test number.
+//!
+//! **Coverage:**
+//! Document markers, bare/explicit/directives documents, multi-document streams
 
 #[path = "../common/mod.rs"]
 mod common;

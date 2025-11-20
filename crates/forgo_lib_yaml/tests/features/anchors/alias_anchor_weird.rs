@@ -1,3 +1,16 @@
+//! Anchor on Alias Node Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §3.2.2.2: Anchors and Aliases in serialization tree
+//! - §6.9.2: Node Anchors (`&anchor` and `*alias`)
+//! - §7.1: Alias Nodes in flow style
+//!
+//! **Purpose:**
+//! These tests validate the edge case where an anchor is placed on an alias
+//! node itself (e.g., `- &x *x`). While unusual, this is syntactically valid
+//! YAML and must round-trip correctly. This complements the standard anchor
+//! tests in `anchors.rs` by covering this uncommon but spec-compliant pattern.
+
 use forgo_lib_yaml::{Doc, Node};
 
 fn doc(s: &str) -> Doc {

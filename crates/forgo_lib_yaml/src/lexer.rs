@@ -6,6 +6,8 @@ use crate::util::{is_plain_scalar_char, leading_spaces};
 pub struct StrTok {
     pub text: String,
     pub quoted: bool,
+    /// True if this quoted string spanned multiple source lines (contains literal newlines in source)
+    pub multiline: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,6 +46,9 @@ pub struct Lexer<'a> {
     pub(crate) i: usize,
     pub(crate) line_start: bool,
     pub(crate) saw_cr: bool,
+    /// Track flow collection depth: incremented by '[' and '{', decremented by ']' and '}'
+    /// Used to determine context for plain scalar character validation
+    flow_depth: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -71,12 +76,28 @@ impl<'a> Lexer<'a> {
             i: 0,
             line_start: true,
             saw_cr: false,
+            flow_depth: 0,
         };
         // Skip UTF-8 BOM if present
         if me.peek() == Some('\u{FEFF}') {
             me.bump();
         }
         me
+    }
+
+    /// Check if a character is valid in a plain scalar given current context
+    /// Per YAML 1.2.2 §7.3.3: In block context, ] and } are allowed in plain scalars
+    /// In flow context, they terminate flow collections
+    fn is_plain_scalar_char_in_context(&self, c: char) -> bool {
+        // In block context (flow_depth == 0), allow ] and }
+        if self.flow_depth == 0 {
+            match c {
+                ']' | '}' => return true,
+                _ => {}
+            }
+        }
+        // For all other cases, use the standard check
+        is_plain_scalar_char(c)
     }
 
     fn peek_slice(&self, n: usize) -> Option<&'a str> {
@@ -130,16 +151,46 @@ impl<'a> Lexer<'a> {
             let spaces = leading_spaces(&self.s[self.i..]);
             self.i += spaces;
 
-            // Reject a literal tab that appears in the indentation column
+            // Handle tabs after leading spaces
+            // Per YAML 1.2.2 §6.2: Tabs are forbidden for *indentation*, but allowed as *separators*.
+            // Once we've counted leading spaces (which establish indentation), any tabs that follow
+            // are content separators, not indentation.
+            // - Tab on empty line → treat as empty line
+            // - Tab followed by content → consume as separator and continue
             if matches!(self.peek(), Some('\t')) {
-                self.bump();
-                self.line_start = true;
-                return Tok::TabIndent;
+                self.bump(); // consume the tab
+
+                // Check if this is a tab-only line (tab followed by newline)
+                if matches!(self.peek(), Some('\n') | Some('\r')) {
+                    // Tab on otherwise empty line - treat like space-only line
+                    // Emit Tok::Indent to signal an empty line (preserves newlines in scalars)
+                    self.line_start = false;
+                    return Tok::Indent(spaces);
+                }
+
+                // Tab followed by content - acts as separator
+                // Consume additional tabs and spaces as separators
+                while matches!(self.peek(), Some('\t') | Some(' ')) {
+                    self.bump();
+                }
+                // Now continue to parse content (don't return early)
+                // Fall through to the rest of the line_start logic
             }
 
-            // Blank line?
+            // Blank line or space-only line?
             match self.peek() {
                 Some('\n') | Some('\r') => {
+                    // YAML 1.2.2 §8.1.3: For block scalars, space-only lines with indentation
+                    // exceeding the content indent create ambiguity. To allow the parser to
+                    // validate this, emit Tok::Indent(spaces) even for blank lines, rather
+                    // than consuming them as Tok::Newline immediately.
+                    //
+                    // Only do this if spaces > 0 - truly empty lines remain as Tok::Newline
+                    if spaces > 0 {
+                        self.line_start = false;
+                        return Tok::Indent(spaces);
+                    }
+                    // Empty line (no spaces): return Newline directly
                     self.bump_newline();
                     return Tok::Newline;
                 }
@@ -214,18 +265,26 @@ impl<'a> Lexer<'a> {
             }
             '[' => {
                 self.bump();
+                self.flow_depth += 1;
                 Tok::LBracket
             }
             ']' => {
                 self.bump();
+                if self.flow_depth > 0 {
+                    self.flow_depth -= 1;
+                }
                 Tok::RBracket
             }
             '{' => {
                 self.bump();
+                self.flow_depth += 1;
                 Tok::LBrace
             }
             '}' => {
                 self.bump();
+                if self.flow_depth > 0 {
+                    self.flow_depth -= 1;
+                }
                 Tok::RBrace
             }
             ',' => {
@@ -255,13 +314,21 @@ impl<'a> Lexer<'a> {
                     Some('\t') | Some('\n') | Some('\r') | None => {
                         Tok::Minus // standalone '-' (chomping indicator)
                     }
-                    Some(c) if is_plain_scalar_char(c) => {
+                    Some(c) if self.is_plain_scalar_char_in_context(c) => {
                         // '-' followed by a plain scalar char - collect as part of plain scalar
                         let mut word = String::from("-");
-                        word.push_str(&self.eat_while(is_plain_scalar_char));
+                        let flow_depth = self.flow_depth;
+                        word.push_str(&self.eat_while(|ch| {
+                            if flow_depth == 0 && matches!(ch, ']' | '}') {
+                                true
+                            } else {
+                                is_plain_scalar_char(ch)
+                            }
+                        }));
                         Tok::Str(StrTok {
                             text: word,
                             quoted: false,
+                            multiline: false,
                         })
                     }
                     _ => {
@@ -323,12 +390,56 @@ impl<'a> Lexer<'a> {
                 self.bump();
                 let mut out = String::new();
                 let mut terminated = false;
+                let mut spanned_lines = false; // Track if string contains literal newlines in source
                 while let Some(c) = self.peek() {
                     self.bump();
                     match c {
                         '"' => {
                             terminated = true;
                             break;
+                        }
+                        '\n' | '\r' => {
+                            // Literal newline in the source (not escaped)
+                            spanned_lines = true;
+                            out.push(c);
+
+                            // YAML 1.2.2 §7.3.1: In block context, continuation lines must be indented
+                            // Check if next character (continuation line) starts at column 0 in block context
+                            if self.flow_depth == 0 {
+                                // In block context - continuation lines at column 0 are invalid
+                                if let Some(next_ch) = self.peek() {
+                                    // If next char is not whitespace (space/tab), it's at column 0
+                                    // This is invalid for continuation lines per YAML 1.2.2 §7.3.1
+                                    if !matches!(next_ch, ' ' | '\t' | '\n' | '\r' | '"') {
+                                        return Tok::Error(
+                                            "double-quoted scalar continuation line must be indented (cannot start at column 0 in block context)".into()
+                                        );
+                                    }
+                                }
+                            }
+
+                            // YAML 1.2.2 §7.3.1 & §9.1: Document markers at start of line
+                            // terminate even quoted scalars
+                            // Check if next line starts with --- or ... followed by whitespace/EOF
+                            if let Some(s3) = self.peek_slice(3) {
+                                if s3 == "---" || s3 == "..." {
+                                    // Check if followed by whitespace, newline, or EOF
+                                    let temp_i = self.i + 3;
+                                    let is_marker = if temp_i >= self.s.len() {
+                                        true // EOF after marker
+                                    } else {
+                                        matches!(self.s.chars().nth(temp_i), Some(' ') | Some('\t') | Some('\n') | Some('\r') | Some('#'))
+                                    };
+
+                                    if is_marker {
+                                        // Document marker found - quoted string is unterminated
+                                        return Tok::Error(format!(
+                                            "unterminated quoted scalar: document marker '{}' at start of line inside quoted string",
+                                            s3
+                                        ));
+                                    }
+                                }
+                            }
                         }
                         '\\' => {
                             if let Some(n) = self.peek() {
@@ -467,12 +578,14 @@ impl<'a> Lexer<'a> {
                 Tok::Str(StrTok {
                     text: out,
                     quoted: true,
+                    multiline: spanned_lines,
                 })
             }
             '\'' => {
                 self.bump();
                 let mut out = String::new();
                 let mut terminated = false;
+                let mut spanned_lines = false; // Track if string contains literal newlines in source
                 while let Some(c) = self.peek() {
                     self.bump();
                     match c {
@@ -486,6 +599,11 @@ impl<'a> Lexer<'a> {
                                 break;
                             }
                         }
+                        '\n' | '\r' => {
+                            // Literal newline in the source
+                            spanned_lines = true;
+                            out.push(c);
+                        }
                         _ => out.push(c),
                     }
                 }
@@ -495,10 +613,17 @@ impl<'a> Lexer<'a> {
                 Tok::Str(StrTok {
                     text: out,
                     quoted: true,
+                    multiline: spanned_lines,
                 })
             }
             ' ' => {
                 self.eat_while(|c| c == ' ');
+                self.next_token()
+            }
+            '\t' => {
+                // Tabs mid-line are treated as trailing whitespace
+                // (per YAML 1.2.2 §6.2: tabs are allowed as trailing whitespace)
+                self.eat_while(|c| c == ' ' || c == '\t');
                 self.next_token()
             }
             '#' => {
@@ -506,11 +631,19 @@ impl<'a> Lexer<'a> {
                 let text = self.eat_while(|c| c != '\n').trim().to_string();
                 Tok::Comment(text)
             }
-            c if is_plain_scalar_char(c) => {
-                let word = self.eat_while(is_plain_scalar_char);
+            c if self.is_plain_scalar_char_in_context(c) => {
+                let flow_depth = self.flow_depth;
+                let word = self.eat_while(|ch| {
+                    if flow_depth == 0 && matches!(ch, ']' | '}') {
+                        true
+                    } else {
+                        is_plain_scalar_char(ch)
+                    }
+                });
                 Tok::Str(StrTok {
                     text: word,
                     quoted: false,
+                    multiline: false,
                 })
             }
             other => {
@@ -518,6 +651,7 @@ impl<'a> Lexer<'a> {
                 Tok::Str(StrTok {
                     text: other.to_string(),
                     quoted: false,
+                    multiline: false,
                 })
             }
         }

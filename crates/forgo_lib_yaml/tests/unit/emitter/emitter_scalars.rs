@@ -1,4 +1,17 @@
-// tests/emitter_scalars.rs
+//! Scalar Emission Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §7.3: Flow Scalar Styles
+//! - §8.1: Block Scalar Styles
+//! - §6.9: Node Properties
+//! - §10.3: Core Schema (type resolution)
+//!
+//! **Purpose:**
+//! These are unit tests for scalar emission. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 #[test]

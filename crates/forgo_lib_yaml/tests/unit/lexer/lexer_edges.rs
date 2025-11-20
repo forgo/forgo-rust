@@ -1,3 +1,17 @@
+//! Lexer Edge Case Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §5: Characters
+//! - §5.4: Line Break Characters
+//! - §5.2: Character Encodings (BOM handling)
+//! - §6.2: Indentation Spaces (tab rejection)
+//!
+//! **Purpose:**
+//! These are unit tests for lexer edge cases. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 #[test]

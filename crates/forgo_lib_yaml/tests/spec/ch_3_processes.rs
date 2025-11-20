@@ -1,13 +1,17 @@
 // crates/forgo_lib_yaml/tests/spec/ch_3_processes.rs
 //! YAML 1.2.2 Chapter 3: Processes and Models
 //!
-//! Reference: https://yaml.org/spec/1.2.2/#chapter-3-processes-and-models
+//! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-3-processes-and-models
 //!
-//! This chapter defines the three-stage process for loading and dumping YAML:
-//! - Load: Parse → Compose → Construct
-//! - Dump: Represent → Serialize → Present
+//! **Purpose:**
+//! This file contains systematic tests for YAML 1.2.2 Chapter 3. Each test
+//! maps to a specific section of the specification and validates compliance
+//! with the requirements defined there. Test names follow the pattern
+//! `ch_3_Y_ZZ_description` where 3 is the chapter, Y is the section, and
+//! ZZ is the test number.
 //!
-//! Tests validate process requirements and failure modes.
+//! **Coverage:**
+//! Load/dump processes, representation graph, serialization tree, presentation stream, failure points
 
 #[path = "../common/mod.rs"]
 mod common;

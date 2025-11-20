@@ -1,4 +1,17 @@
-// tests/emitter_comments.rs
+//! Comment Emission Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §6.6: Comments (s-b-comment)
+//! - §3.2.3.3: Comments in presentation stream
+//! - Throughout §7 (Flow Styles): Comments in flow collections
+//! - Throughout §8 (Block Styles): Comments in block collections
+//!
+//! **Purpose:**
+//! These are unit tests for comment emission. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 fn doc(s: &str) -> Doc {

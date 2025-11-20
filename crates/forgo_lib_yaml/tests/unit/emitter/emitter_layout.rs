@@ -1,4 +1,17 @@
-// tests/emitter_layout.rs
+//! Layout and Formatting Emission Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §6.2: Indentation Spaces
+//! - §8.2: Block Collection Styles
+//! - §7.4: Flow Collection indentation
+//! - §6.5: Line Folding
+//!
+//! **Purpose:**
+//! These are unit tests for layout and formatting emission. They test implementation-specific
+//! behavior and edge cases not explicitly covered by the spec. Unlike spec
+//! tests which validate compliance, these tests validate internal correctness
+//! and error handling.
+
 use forgo_lib_yaml::Doc;
 
 fn doc(s: &str) -> Doc {

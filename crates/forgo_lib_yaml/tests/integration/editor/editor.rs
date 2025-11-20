@@ -1,3 +1,16 @@
+//! Editor API Integration Tests
+//!
+//! **Related YAML 1.2.2 Spec Sections:**
+//! - §3.2: Information Models (document structure)
+//! - §6-8: YAML syntax (for editing operations)
+//!
+//! **Purpose:**
+//! These integration tests validate the editor API for programmatic YAML manipulation.
+//! They test operations like path-based editing, element insertion/deletion, and
+//! structure normalization across multiple components. The editor API is not part of
+//! the YAML spec but is a high-level interface for working with YAML documents
+//! programmatically.
+
 use forgo_lib_yaml::{Doc, Elem, Node, Scalar, Seg, normalize_string_list};
 
 fn doc(s: &str) -> Doc {
