@@ -405,12 +405,28 @@ impl<'a> Parser<'a> {
                 Tok::Newline => {
                     self.bump();
                 }
-                Tok::Pipe | Tok::Gt | Tok::Eof | Tok::Tag(_) | Tok::Comment(_) | Tok::Amp => {
+                Tok::Pipe | Tok::Gt | Tok::Eof | Tok::Tag(_) | Tok::Comment(_) => {
                     // These are explicitly allowed after --- on same line
                     // Pipe/Gt: block scalars (e.g., "--- |")
                     // Tag: tags (e.g., "--- !!map")
                     // Comment: comments (e.g., "--- # comment")
-                    // Amp: anchors (e.g., "--- &anchor")
+                }
+                Tok::Amp => {
+                    // Anchors are allowed after ---, but NOT if followed by a mapping
+                    // Per YAML 1.2.2 §9.1.2, mappings cannot start on the --- line
+                    // Check if anchor is followed by a mapping (key: value pattern)
+                    let mut lx_lookahead = self.lx.clone();
+                    lx_lookahead.next_token(); // Skip the Amp
+                    let anchor_name = lx_lookahead.next_token(); // Should be Str(anchor_name)
+                    if matches!(anchor_name, Tok::Str(_)) {
+                        let next_tok = lx_lookahead.next_token();
+                        if matches!(next_tok, Tok::Colon) {
+                            return Err(Error::Parse(
+                                "mapping cannot start on document start line '---' (per YAML 1.2.2 §9.1.2)".into()
+                            ));
+                        }
+                    }
+                    // Otherwise, it's a valid anchor like "--- &anchor" which is valid
                 }
                 Tok::Str(_) => {
                     // Scalars are allowed after ---, but NOT mappings

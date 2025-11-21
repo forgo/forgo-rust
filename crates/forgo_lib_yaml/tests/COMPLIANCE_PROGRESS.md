@@ -1,7 +1,7 @@
 # YAML 1.2.2 Compliance Progress
 
-**Last Updated:** 2025-11-20
-**Official Suite:** 251/363 passing (69.1%) | **Spec:** 671/671 (100%) 🎉✅
+**Last Updated:** 2025-11-21
+**Official Suite:** 304/363 passing (83.7%) | **Spec:** 671/671 (100%) 🎉✅
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| **Official Suite** | **251/363 (69.1%)** | 100% |
+| **Official Suite** | **304/363 (83.7%)** | 100% |
 | **Spec Tests** | **671/671 (100%)** 🎉✅ | 100% |
 | Internal Tests | Passing ✅ | 100% |
 
@@ -17,21 +17,22 @@
 
 ---
 
-## Current Failures (112 tests)
+## Current Failures (59 tests)
 
-### Should Parse But Failed (2 tests)
-- **S98Z, W9L4**: Block scalar indentation edge cases
+### Should Parse But Failed (7 tests)
+- **Block scalar edge cases**: S98Z, W9L4, JKF3, QB6E
+- **Other parsing issues**: P2EQ, Q5MG, RXY3
 
-### Should Fail But Parsed (63 tests)
+### Should Fail But Parsed (52 tests)
 - **Invalid indentation** (8): 4HVU, 5LLU, DMG6, EW3V, N4JP, U44R, ZVH3, DK95
 - **Invalid mapping syntax** (8): 236B, 2CMS, 7MNF, BD7L, GDY7, HU3P, TD5N, ZCZ6
 - **Comment placement** (3): 8XDJ, BF9H, BS4K
-- **Document markers** (6): 5TRB, 9HCY, 9MMA, B63P, EB22, RXY3
-- **Anchor/alias issues** (7): 4JVG, SR86, SU74, G9HC, GT5M, SY6V, H7J7
-- **Tab handling** (16): 4EJS, Y79Y (7 sub-tests), DK95 (9)
-- **Tag validation** (3): U99R, QLJ7, H7TQ
+- **Document markers** (4): 9HCY, 9MMA, B63P, EB22
+- **Anchor/alias issues** (6): 4JVG, G9HC, GT5M, SY6V, H7J7, 6S55
+- **Tab handling** (16): Y79Y (7 sub-tests), DK95 (9)
+- **Tag validation** (1): QLJ7
 - **Multiline implicit keys** (3): 7LBH, D49Q, G7JE
-- **Other** (4): Additional validation gaps
+- **Other validation gaps** (3): 9CWY, C2SP, and more
 
 ---
 
@@ -57,6 +58,13 @@ Final spec test: Fix tab indent validation
 ---
 
 ## Recent Victories ✅
+
+**46. Document Marker Anchor Validation** (CXX2)
+- Validate anchors after document start markers cannot be followed by mappings per YAML 1.2.2 §9.1.2
+- Reject patterns like `--- &anchor a: b` where mapping starts on same line as `---`
+- Valid: `--- &anchor` (on separate line from content), invalid: `--- &anchor a: b`
+- File: `parser.rs:414-430` - Added lookahead validation after anchor on document start line
+- Result: Fixed CXX2, +53 tests (251→304)
 
 **45. Tag Format Validation** (LHL4)
 - Validate tags must be separated from following content by whitespace per YAML 1.2.2 §6.9

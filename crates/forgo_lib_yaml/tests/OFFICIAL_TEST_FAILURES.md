@@ -1,6 +1,6 @@
 # Official YAML Test Suite - Failure Report
 
-**Total Failures:** 64 out of 363 tests (17.6%)
+**Total Failures:** 59 out of 363 tests (16.3%)
 
 ---
 
@@ -359,22 +359,6 @@ tree: |
  +DOC
   +SEQ []
    =VAL :23
-```
-
----
-
-## Test: CXX2 - Mapping with anchor on document start line
-
-**Tags:** anchor, error, header, mapping
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
---- &anchor a: b
-tree: |
-+STR
- +DOC ---
 ```
 
 ---
@@ -779,23 +763,6 @@ tree: |
 
 ---
 
-## Test: LHL4 - Invalid tag
-
-**Tags:** error, tag
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
----
-!invalid{}tag scalar
-tree: |
-+STR
- +DOC ---
-```
-
----
-
 ## Test: MUS6 - Directive variants
 
 **Tags:** directive
@@ -1011,26 +978,6 @@ tree: |
 
 ---
 
-## Test: S4GJ - Invalid text after block scalar indicator
-
-**Tags:** error, folded
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
----
-folded: > first line
-  second line
-tree: |
-+STR
- +DOC ---
-  +MAP
-   =VAL :folded
-```
-
----
-
 ## Test: S98Z - Block scalar with more spaces than first content line
 
 **Tags:** error, folded, comment, scalar, whitespace
@@ -1095,25 +1042,6 @@ a:
 
 ---
 
-## Test: SU5Z - Comment without whitespace after doublequoted scalar
-
-**Tags:** comment, error, double, whitespace
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key: "value"# invalid comment
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
-   =VAL "value
-```
-
----
-
 ## Test: SY6V - Anchor before sequence entry on same line
 
 **Tags:** anchor, error, sequence
@@ -1173,23 +1101,6 @@ tree: |
 
 ---
 
-## Test: U99R - Invalid comma in tag
-
-**Tags:** error, tag
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-- !!str, xxx
-tree: |
-+STR
- +DOC
-  +SEQ
-```
-
----
-
 ## Test: W9L4 - Literal block scalar with more spaces in first line
 
 **Tags:** error, literal, whitespace
@@ -1208,6 +1119,46 @@ tree: |
  +DOC ---
   +MAP
    =VAL :block scalar
+```
+
+---
+
+## Test: WZ62 - Spec Example 7.2. Empty Content
+
+**Tags:** spec, flow, scalar, tag
+
+**Failure Type:** Should parse but failed
+
+**Error:**
+```
+Parse error: invalid tag format: '!!str' cannot be followed by ',' without whitespace
+```
+
+**Input YAML:**
+```yaml
+{
+  foo : !!str,
+  !!str : bar,
+}
+tree: |
++STR
+ +DOC
+  +MAP {}
+   =VAL :foo
+   =VAL <tag:yaml.org,2002:str> :
+   =VAL <tag:yaml.org,2002:str> :
+   =VAL :bar
+  -MAP
+ -DOC
+-STR
+json: |
+{
+  "foo": "",
+  "": "bar"
+}
+dump: |
+foo: !!str
+!!str : bar
 ```
 
 ---
@@ -1253,25 +1204,6 @@ dump: |
 - c
 - *b
 - d
-```
-
----
-
-## Test: X4QW - Comment without whitespace after block scalar indicator
-
-**Tags:** folded, comment, error, whitespace
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-block: ># comment
-  scalar
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :block
 ```
 
 ---
