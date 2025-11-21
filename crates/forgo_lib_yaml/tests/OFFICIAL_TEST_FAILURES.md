@@ -1,6 +1,6 @@
 # Official YAML Test Suite - Failure Report
 
-**Total Failures:** 70 out of 363 tests (19.3%)
+**Total Failures:** 69 out of 363 tests (19.0%)
 
 ---
 
@@ -112,29 +112,6 @@ tree: |
  +DOC
   +MAP
    =VAL :block scalar
-```
-
----
-
-## Test: 62EZ - Invalid block mapping key on same line as previous key
-
-**Tags:** error, flow, mapping
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
----
-x: { y: z }in: valid
-tree: |
-+STR
- +DOC ---
-  +MAP
-   =VAL :x
-   +MAP {}
-    =VAL :y
-    =VAL :z
-   -MAP
 ```
 
 ---

@@ -1177,6 +1177,16 @@ impl<'a> Parser<'a> {
             }
             Tok::LBrace => {
                 let node = self.parse_inline_map_node(parent_indent)?;
+                // After flow map closes, validate no invalid content on same line
+                // YAML 1.2.2: flow collections must be followed by valid separators
+                if !matches!(
+                    self.look,
+                    Tok::Newline | Tok::Comment(_) | Tok::Eof | Tok::Comma | Tok::RBrace | Tok::RBracket
+                ) {
+                    return Err(Error::Parse(
+                        "unexpected content after flow mapping - must be followed by whitespace, comma, or closing bracket".into()
+                    ));
+                }
                 Elem { node, meta }
             }
             Tok::RBracket => {
