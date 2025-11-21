@@ -1,7 +1,7 @@
 # YAML 1.2.2 Compliance Progress
 
 **Last Updated:** 2025-11-20
-**Official Suite:** 247/363 passing (68.0%) | **Spec:** 671/671 (100%) 🎉✅
+**Official Suite:** 248/363 passing (68.3%) | **Spec:** 671/671 (100%) 🎉✅
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| **Official Suite** | **247/363 (68.0%)** | 100% |
+| **Official Suite** | **248/363 (68.3%)** | 100% |
 | **Spec Tests** | **671/671 (100%)** 🎉✅ | 100% |
 | Internal Tests | Passing ✅ | 100% |
 
@@ -17,7 +17,7 @@
 
 ---
 
-## Current Failures (116 tests)
+## Current Failures (115 tests)
 
 ### Should Parse But Failed (2 tests)
 - **S98Z, W9L4**: Block scalar indentation edge cases
@@ -29,7 +29,7 @@
 - **Document markers** (6): 5TRB, 9HCY, 9MMA, B63P, EB22, RXY3
 - **Anchor/alias issues** (7): 4JVG, SR86, SU74, G9HC, GT5M, SY6V, H7J7
 - **Tab handling** (16): 4EJS, Y79Y (7 sub-tests), DK95 (9)
-- **Tag validation** (5): LHL4, U99R, QLJ7, H7TQ, S4GJ
+- **Tag validation** (4): LHL4, U99R, QLJ7, H7TQ
 - **Multiline implicit keys** (3): 7LBH, D49Q, G7JE
 - **Other** (4): Additional validation gaps
 
@@ -57,6 +57,13 @@ Final spec test: Fix tab indent validation
 ---
 
 ## Recent Victories ✅
+
+**42. Block Scalar Indicator Validation** (S4GJ)
+- Validate block scalar indicators cannot have content on same line per YAML 1.2.2 §8.1.1
+- Reject patterns like `folded: > first line` where content follows indicator
+- After `|` or `>` indicators (and optional chomping/indent indicators), only comments allowed before newline
+- File: `parser.rs:1962-1968` - Added validation after indicator parsing
+- Result: Fixed S4GJ, +1 test (247→248)
 
 **41. Comment Whitespace Validation** (9JBA, CVW2)
 - Validate comments must be separated from content by whitespace per YAML 1.2.2 §6.5

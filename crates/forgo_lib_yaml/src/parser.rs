@@ -1959,6 +1959,14 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // YAML 1.2.2 §8.1.1: After block scalar indicator and optional chomping/indent indicators,
+        // only comments or newline are allowed - no content on same line
+        if matches!(self.look, Tok::Str(_)) {
+            return Err(Error::Parse(
+                "block scalar indicator cannot have content on same line - only comments allowed".into()
+            ));
+        }
+
         // Consume to EOL (allow trailing comment)
         let mut trailing_meta = Meta::default();
         self.consume_trailing_comment_into(&mut trailing_meta);
