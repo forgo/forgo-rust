@@ -1,6 +1,6 @@
 # Official YAML Test Suite - Failure Report
 
-**Total Failures:** 59 out of 363 tests (16.3%)
+**Total Failures:** 57 out of 363 tests (15.7%)
 
 ---
 
@@ -136,27 +136,6 @@ tree: |
    +SEQ
     =VAL :bar
     =VAL :baz
-```
-
----
-
-## Test: 7LBH - Multiline double quoted implicit keys
-
-**Tags:** error, double
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-"a\nb": 1
-"c
- d": 1
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL "a\nb
-   =VAL :1
 ```
 
 ---
@@ -359,27 +338,6 @@ tree: |
  +DOC
   +SEQ []
    =VAL :23
-```
-
----
-
-## Test: D49Q - Multiline single quoted implicit keys
-
-**Tags:** error, single, mapping
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-'a\nb': 1
-'c
- d': 1
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL 'a\\nb
-   =VAL :1
 ```
 
 ---

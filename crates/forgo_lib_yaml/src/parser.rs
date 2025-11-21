@@ -813,7 +813,7 @@ impl<'a> Parser<'a> {
                         Tok::Str(StrTok {
                             text: key,
                             quoted: quoted_key,
-                            ..
+                            multiline: multiline_key,
                         }) => {
                             // Check for directives appearing after content has started
                             if key == "%YAML" || key == "%TAG" {
@@ -826,6 +826,14 @@ impl<'a> Parser<'a> {
                             self.bump();
 
                             if matches!(self.look, Tok::Colon) {
+                                // YAML 1.2.2 §7.3.3: Implicit keys are restricted to a single line
+                                // Reject multiline quoted strings used as implicit mapping keys
+                                if multiline_key {
+                                    return Err(Error::Parse(
+                                        "implicit keys must be on a single line (YAML 1.2.2 §7.3.3)".into()
+                                    ));
+                                }
+
                                 // Map entry: key:
                                 self.bump(); // ':'
                                 saw_map = true;

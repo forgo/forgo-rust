@@ -1,7 +1,7 @@
 # YAML 1.2.2 Compliance Progress
 
 **Last Updated:** 2025-11-21
-**Official Suite:** 304/363 passing (83.7%) | **Spec:** 671/671 (100%) 🎉✅
+**Official Suite:** 306/363 passing (84.3%) | **Spec:** 671/671 (100%) 🎉✅
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| **Official Suite** | **304/363 (83.7%)** | 100% |
+| **Official Suite** | **306/363 (84.3%)** | 100% |
 | **Spec Tests** | **671/671 (100%)** 🎉✅ | 100% |
 | Internal Tests | Passing ✅ | 100% |
 
@@ -17,7 +17,7 @@
 
 ---
 
-## Current Failures (59 tests)
+## Current Failures (57 tests)
 
 ### Should Parse But Failed (7 tests)
 - **Block scalar edge cases**: S98Z, W9L4, JKF3, QB6E
@@ -31,7 +31,7 @@
 - **Anchor/alias issues** (6): 4JVG, G9HC, GT5M, SY6V, H7J7, 6S55
 - **Tab handling** (16): Y79Y (7 sub-tests), DK95 (9)
 - **Tag validation** (1): QLJ7
-- **Multiline implicit keys** (3): 7LBH, D49Q, G7JE
+- **Multiline implicit keys** (1): G7JE
 - **Other validation gaps** (3): 9CWY, C2SP, and more
 
 ---
@@ -58,6 +58,14 @@ Final spec test: Fix tab indent validation
 ---
 
 ## Recent Victories ✅
+
+**47. Multiline Quoted Implicit Key Validation** (7LBH, D49Q)
+- Validate quoted implicit keys must be on a single line per YAML 1.2.2 §7.3.3
+- Reject multiline quoted strings (those spanning source lines) used as mapping keys
+- Invalid: `"c\n d": 1` (quoted string spanning multiple source lines)
+- Valid: `"abc": 1` (single-line quoted string)
+- File: `parser.rs:813-835` - Added multiline check for quoted keys before colon
+- Result: Fixed 7LBH, D49Q, +2 tests (304→306)
 
 **46. Document Marker Anchor Validation** (CXX2)
 - Validate anchors after document start markers cannot be followed by mappings per YAML 1.2.2 §9.1.2
