@@ -262,6 +262,11 @@ impl<'a> Lexer<'a> {
                 if self.flow_depth > 0 {
                     self.flow_depth -= 1;
                 }
+                // YAML 1.2.2 §6.5: Comments must be separated from content by whitespace
+                // Check if '#' immediately follows without whitespace
+                if matches!(self.peek(), Some('#')) {
+                    return Tok::Error("comment must be separated from content by whitespace".into());
+                }
                 Tok::RBracket
             }
             '{' => {
@@ -278,6 +283,11 @@ impl<'a> Lexer<'a> {
             }
             ',' => {
                 self.bump();
+                // YAML 1.2.2 §6.5: Comments must be separated from content by whitespace
+                // Check if '#' immediately follows without whitespace
+                if matches!(self.peek(), Some('#')) {
+                    return Tok::Error("comment must be separated from content by whitespace".into());
+                }
                 Tok::Comma
             }
             '|' => {

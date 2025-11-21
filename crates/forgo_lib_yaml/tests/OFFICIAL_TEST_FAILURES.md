@@ -1,6 +1,6 @@
 # Official YAML Test Suite - Failure Report
 
-**Total Failures:** 66 out of 363 tests (18.2%)
+**Total Failures:** 64 out of 363 tests (17.6%)
 
 ---
 
@@ -251,28 +251,6 @@ tree: |
 
 ---
 
-## Test: 9JBA - Invalid comment after end of flow sequence
-
-**Tags:** comment, error, flow, sequence
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
----
-[ a, b, c, ]#invalid
-tree: |
-+STR
- +DOC ---
-  +SEQ []
-   =VAL :a
-   =VAL :b
-   =VAL :c
-  -SEQ
-```
-
----
-
 ## Test: 9MMA - Directive by itself with no document
 
 **Tags:** error, directive
@@ -381,28 +359,6 @@ tree: |
  +DOC
   +SEQ []
    =VAL :23
-```
-
----
-
-## Test: CVW2 - Invalid comment after comma
-
-**Tags:** comment, error, flow, sequence
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
----
-[ a, b, c,#invalid
-]
-tree: |
-+STR
- +DOC ---
-  +SEQ []
-   =VAL :a
-   =VAL :b
-   =VAL :c
 ```
 
 ---
