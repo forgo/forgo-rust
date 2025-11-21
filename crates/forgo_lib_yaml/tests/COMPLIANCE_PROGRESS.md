@@ -1,7 +1,7 @@
 # YAML 1.2.2 Compliance Progress
 
 **Last Updated:** 2025-11-20
-**Official Suite:** 248/363 passing (68.3%) | **Spec:** 671/671 (100%) 🎉✅
+**Official Suite:** 249/363 passing (68.6%) | **Spec:** 671/671 (100%) 🎉✅
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| **Official Suite** | **248/363 (68.3%)** | 100% |
+| **Official Suite** | **249/363 (68.6%)** | 100% |
 | **Spec Tests** | **671/671 (100%)** 🎉✅ | 100% |
 | Internal Tests | Passing ✅ | 100% |
 
@@ -17,7 +17,7 @@
 
 ---
 
-## Current Failures (115 tests)
+## Current Failures (114 tests)
 
 ### Should Parse But Failed (2 tests)
 - **S98Z, W9L4**: Block scalar indentation edge cases
@@ -25,7 +25,7 @@
 ### Should Fail But Parsed (63 tests)
 - **Invalid indentation** (8): 4HVU, 5LLU, DMG6, EW3V, N4JP, U44R, ZVH3, DK95
 - **Invalid mapping syntax** (8): 236B, 2CMS, 7MNF, BD7L, GDY7, HU3P, TD5N, ZCZ6
-- **Comment placement** (5): 8XDJ, BF9H, BS4K, X4QW, SU5Z
+- **Comment placement** (4): 8XDJ, BF9H, BS4K, SU5Z
 - **Document markers** (6): 5TRB, 9HCY, 9MMA, B63P, EB22, RXY3
 - **Anchor/alias issues** (7): 4JVG, SR86, SU74, G9HC, GT5M, SY6V, H7J7
 - **Tab handling** (16): 4EJS, Y79Y (7 sub-tests), DK95 (9)
@@ -57,6 +57,13 @@ Final spec test: Fix tab indent validation
 ---
 
 ## Recent Victories ✅
+
+**43. Block Scalar Comment Whitespace** (X4QW)
+- Validate comments must be separated by whitespace after block scalar indicators per YAML 1.2.2 §6.5
+- Reject patterns like `>#comment` and `|#comment` (no whitespace before `#`)
+- Valid: `> # comment`, invalid: `>#comment`
+- Files: `lexer.rs:297-305` - Added validation after `>` and `|` tokens
+- Result: Fixed X4QW, +1 test (248→249)
 
 **42. Block Scalar Indicator Validation** (S4GJ)
 - Validate block scalar indicators cannot have content on same line per YAML 1.2.2 §8.1.1

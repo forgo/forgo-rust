@@ -292,10 +292,20 @@ impl<'a> Lexer<'a> {
             }
             '|' => {
                 self.bump();
+                // YAML 1.2.2 §6.5: Comments must be separated from content by whitespace
+                // Check if '#' immediately follows without whitespace (like "|#comment")
+                if matches!(self.peek(), Some('#')) {
+                    return Tok::Error("comment must be separated from content by whitespace".into());
+                }
                 Tok::Pipe
             }
             '>' => {
                 self.bump();
+                // YAML 1.2.2 §6.5: Comments must be separated from content by whitespace
+                // Check if '#' immediately follows without whitespace (like ">#comment")
+                if matches!(self.peek(), Some('#')) {
+                    return Tok::Error("comment must be separated from content by whitespace".into());
+                }
                 Tok::Gt
             }
             '+' => {
