@@ -2435,15 +2435,86 @@ impl<'a> Parser<'a> {
                     Tok::Indent(n) if n >= nested_indent => {
                         self.parse_elem_at_indent(nested_indent)
                     }
+                    Tok::Indent(n) if (meta.anchor.is_some() || meta.tag.is_some()) && n > parent_indent => {
+                        // Special case: anchor/tag followed by content indented more than parent
+                        // This is valid - the anchor/tag attaches to the following block content
+                        // Example: `sequence: !!seq\n- entry` where tag is at parent level
+                        let mut elem = self.parse_elem_at_indent(n)?;
+                        if elem.meta.anchor.is_none() {
+                            elem.meta.anchor = meta.anchor.take();
+                        }
+                        if elem.meta.tag.is_none() {
+                            elem.meta.tag = meta.tag.take();
+                        }
+                        Ok(elem)
+                    }
                     Tok::DocStart | Tok::DocEnd => {
                         return Err(Error::Parse(
                             "document marker not allowed inside block".into(),
                         ));
                     }
-                    _ => Ok(Elem::new(Node::Seq(vec![]))),
+                    Tok::Indent(n) if n == parent_indent => {
+                        // Anchor/tag followed by content at same level as parent (not indented further)
+                        // Check for orphaned anchor pattern at NESTED level (parent_indent > 0)
+                        // Example: `- item1\n&anchor\n- item2` where anchor is between sequence items
+                        if (meta.anchor.is_some() || meta.tag.is_some())
+                            && matches!(self.look, Tok::Dash)
+                            && parent_indent > 0 {
+                            self.bump(); // consume indent
+                            // This is an orphaned anchor between sequence items at nested level
+                            return Err(Error::Parse(
+                                "anchor or tag must be followed by indented content (YAML 1.2.2 §6.9)".into()
+                            ));
+                        }
+
+                        // At root level (parent_indent == 0) with anchor + dash, parse the block structure
+                        // Example: `&sequence\n- a` should parse the sequence and attach the anchor
+                        if (meta.anchor.is_some() || meta.tag.is_some()) && parent_indent == 0 {
+                            // Parse block content starting at this indentation
+                            let mut elem = self.parse_block(n)?;
+                            if elem.meta.anchor.is_none() {
+                                elem.meta.anchor = meta.anchor;
+                            }
+                            if elem.meta.tag.is_none() {
+                                elem.meta.tag = meta.tag;
+                            }
+                            return Ok(elem);
+                        }
+
+                        // No anchor/tag, or other cases - create empty sequence
+                        self.bump(); // consume indent
+                        if meta.anchor.is_some() || meta.tag.is_some() {
+                            let mut elem = Elem::new(Node::Scalar(Scalar::Str(String::new())));
+                            elem.meta.anchor = meta.anchor;
+                            elem.meta.tag = meta.tag;
+                            return Ok(elem);
+                        }
+                        Ok(Elem::new(Node::Seq(vec![])))
+                    }
+                    _ => {
+                        // If we have an anchor or tag, this creates an empty scalar with the metadata
+                        // Example: `- !!str` followed by newline + EOF creates empty string with tag
+                        if meta.anchor.is_some() || meta.tag.is_some() {
+                            let mut elem = Elem::new(Node::Scalar(Scalar::Str(String::new())));
+                            elem.meta.anchor = meta.anchor;
+                            elem.meta.tag = meta.tag;
+                            return Ok(elem);
+                        }
+                        Ok(Elem::new(Node::Seq(vec![])))
+                    }
                 }
             }
-            Tok::Eof => Ok(Elem::new(Node::Seq(vec![]))),
+            Tok::Eof => {
+                // If we have an anchor or tag at EOF, create an empty scalar
+                // Example: `- !!str` at end of document creates empty string with tag
+                if meta.anchor.is_some() || meta.tag.is_some() {
+                    let mut elem = Elem::new(Node::Scalar(Scalar::Str(String::new())));
+                    elem.meta.anchor = meta.anchor;
+                    elem.meta.tag = meta.tag;
+                    return Ok(elem);
+                }
+                Ok(Elem::new(Node::Seq(vec![])))
+            }
             Tok::Comma => {
                 self.bump();
                 let mut e = Elem::new(Node::Scalar(Scalar::Str(String::new())));

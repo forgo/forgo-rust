@@ -23,12 +23,12 @@
 - **Block scalar edge cases**: S98Z, W9L4, JKF3, QB6E
 - **Other parsing issues**: P2EQ, Q5MG, RXY3
 
-### Should Fail But Parsed (52 tests)
+### Should Fail But Parsed (50 tests)
 - **Invalid indentation** (8): 4HVU, 5LLU, DMG6, EW3V, N4JP, U44R, ZVH3, DK95
 - **Invalid mapping syntax** (8): 236B, 2CMS, 7MNF, BD7L, GDY7, HU3P, TD5N, ZCZ6
 - **Comment placement** (3): 8XDJ, BF9H, BS4K
 - **Document markers** (4): 9HCY, 9MMA, B63P, EB22
-- **Anchor/alias issues** (6): 4JVG, G9HC, GT5M, SY6V, H7J7, 6S55
+- **Anchor/alias issues** (4): 4JVG, SY6V, H7J7, 6S55
 - **Tab handling** (16): Y79Y (7 sub-tests), DK95 (9)
 - **Tag validation** (1): QLJ7
 - **Multiline implicit keys** (1): G7JE
@@ -58,6 +58,16 @@ Final spec test: Fix tab indent validation
 ---
 
 ## Recent Victories ✅
+
+**48. Root-Level Anchor Before Sequence** (3R3P)
+- Fixed: Anchors at document root before sequences now parse correctly per YAML 1.2.2 §6.9
+- Valid: `&sequence\n- a` at root (anchor attaches to sequence)
+- Valid: `sequence: !!seq\n- entry` (tag before indented sequence)
+- Valid: `- !!str` (tag on empty scalar)
+- Files: `parser.rs:2456-2493` - Special handling for root-level anchor + dash in parse_line_value_or_nested
+- At `parent_indent==0`, anchor followed by sequence is valid; calls `parse_block` to build sequence with anchor
+- Result: Fixed 3R3P, maintained 306/363 (57 failures)
+- Note: Orphaned mid-sequence anchors (GT5M, G9HC, SY6V, H7J7) remain - need context-aware detection
 
 **47. Multiline Quoted Implicit Key Validation** (7LBH, D49Q)
 - Validate quoted implicit keys must be on a single line per YAML 1.2.2 §7.3.3
