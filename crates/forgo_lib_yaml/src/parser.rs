@@ -325,14 +325,37 @@ impl<'a> Parser<'a> {
                 if yaml_version.is_some() {
                     return Err(Error::Parse("duplicate %YAML directive".into()));
                 }
-                if let Some(ver) = line.split_whitespace().nth(1) {
+                // YAML 1.2.2 §6.8.1: %YAML directive must be exactly "%YAML major.minor"
+                // Comments are allowed after the version (§6.8 - directives can have comments)
+                // Split by '#' first to remove comments, then check parts
+                let without_comment = line.split('#').next().unwrap_or(&line);
+                let parts: Vec<_> = without_comment.split_whitespace().collect();
+                if parts.len() != 2 {
+                    return Err(Error::Parse(format!(
+                        "invalid %YAML directive: expected '%YAML major.minor', got '{}'",
+                        line
+                    )));
+                }
+                if let Some(ver) = parts.get(1) {
                     let mut it = ver.split('.');
                     if let (Some(maj), Some(min)) = (it.next(), it.next()) {
+                        // Ensure there's no extra content after major.minor
+                        if it.next().is_some() {
+                            return Err(Error::Parse(format!(
+                                "invalid %YAML version format: expected 'major.minor', got '{}'",
+                                ver
+                            )));
+                        }
                         if let (Ok(ma), Ok(mi)) = (maj.parse::<u8>(), min.parse::<u8>()) {
                             yaml_version = Some((ma, mi));
                         } else {
                             return Err(Error::Parse("invalid %YAML version".into()));
                         }
+                    } else {
+                        return Err(Error::Parse(format!(
+                            "invalid %YAML version format: expected 'major.minor', got '{}'",
+                            ver
+                        )));
                     }
                 }
             } else {
@@ -549,6 +572,33 @@ impl<'a> Parser<'a> {
 
     fn parse_elem_at_indent(&mut self, base: usize) -> Result<Elem, Error> {
         // When we produce an Elem, we must attach .meta.leading_comments from buffer and clear it.
+
+        // Parse optional tag and/or anchor before the value (per YAML 1.2.2 §6.9, §7.2)
+        let mut meta = Meta::default();
+
+        // Parse tag if present
+        if let Tok::Tag(tag_text) = &self.look {
+            meta.tag = Some(tag_text.clone());
+            self.bump();
+        }
+
+        // Parse anchor if present
+        // YAML 1.2.2 §6.9.1: Each node may have at most one anchor
+        if matches!(self.look, Tok::Amp) {
+            self.bump();
+            if let Tok::Str(StrTok { text, .. }) = &self.look {
+                meta.anchor = Some(text.clone());
+                self.bump();
+
+                // Check for second anchor - this is an error
+                if matches!(self.look, Tok::Amp) {
+                    return Err(Error::Parse("multiple anchors on same node not allowed (YAML 1.2.2 §6.9.1)".into()));
+                }
+            } else {
+                return Err(Error::Parse("expected anchor name after '&'".into()));
+            }
+        }
+
         let mut elem = match self.look.clone() {
             Tok::TabIndent => {
                 return Err(Error::Parse("tabs are not allowed for indentation".into()));
@@ -636,6 +686,15 @@ impl<'a> Parser<'a> {
                 )));
             }
         };
+
+        // Merge parsed anchor/tag into element's meta
+        if meta.anchor.is_some() {
+            elem.meta.anchor = meta.anchor;
+        }
+        if meta.tag.is_some() {
+            elem.meta.tag = meta.tag;
+        }
+
         if !self.pending_leading_comments.is_empty() {
             elem.meta.leading_comments = std::mem::take(&mut self.pending_leading_comments);
         }
@@ -653,6 +712,8 @@ impl<'a> Parser<'a> {
         let mut last_entry_indent: Option<usize> = None;
         let mut last_value_type: Option<ValueType> = None;
         let mut last_value_non_empty = false;
+        // Track sequence indentation consistency (YAML 1.2.2 §8.2.1)
+        let mut seq_item_indent: Option<usize> = None;
         // Capture leading comments that appear before any content (belong to the container itself)
         // Only take pending comments for top-level blocks (base == 0), as nested blocks should
         // have their leading comments attached to the first child
@@ -667,7 +728,9 @@ impl<'a> Parser<'a> {
                 Tok::TabIndent => {
                     return Err(Error::Parse("tabs are not allowed for indentation".into()));
                 }
-                Tok::Indent(n) if n < base => break, // out of this block
+                Tok::Indent(n) if n < base => {
+                    break; // out of this block
+                }
                 Tok::Indent(n) => {
                     self.bump(); // consume Indent
                     // capture any full-line comments before this item
@@ -703,6 +766,23 @@ impl<'a> Parser<'a> {
                                     ));
                                 }
                             }
+
+                            // YAML 1.2.2 §8.2.1: All sequence items at the SAME level must have the same indentation
+                            // Only validate if this is at the established sequence level (not a new nested sequence)
+                            if let Some(expected_indent) = seq_item_indent {
+                                // Only enforce consistency if we're at the same or shallower level
+                                // (deeper levels indicate nested sequences, which are valid)
+                                if n <= expected_indent && n != expected_indent {
+                                    return Err(Error::Parse(
+                                        format!("inconsistent indentation in sequence: expected indent {}, found {}", expected_indent, n)
+                                    ));
+                                }
+                                // If n > expected_indent, this is a nested sequence - don't update seq_item_indent
+                            } else {
+                                // First sequence item - record its indentation
+                                seq_item_indent = Some(n);
+                            }
+
                             saw_seq = true;
                             self.bump(); // consume Tok::Dash
 
@@ -897,6 +977,23 @@ impl<'a> Parser<'a> {
                             self.pending_leading_comments.push(_c.to_string());
                             self.bump();
                         }
+                        Tok::Amp | Tok::Star | Tok::Tag(_) => {
+                            // Anchor, alias, or tag at block level - parse metadata then value
+                            let mut child = self.parse_line_value_or_nested(n + 2, n)?;
+                            if !self.pending_leading_comments.is_empty() {
+                                child.meta.leading_comments =
+                                    std::mem::take(&mut self.pending_leading_comments);
+                            }
+
+                            // If this is the first thing at block level, it's the block's value
+                            if n == base && !saw_map && !saw_seq {
+                                return Ok(child);
+                            }
+
+                            // Otherwise treat as sequence item
+                            saw_seq = true;
+                            items.push(child);
+                        }
                         other => {
                             // Fallback: collect a single-line plain scalar.
                             let s =
@@ -1023,16 +1120,20 @@ impl<'a> Parser<'a> {
             self.bump();
         }
 
-        // collect inline anchors if present: &name (multiple allowed; we keep the last)
+        // collect inline anchor if present: &name
+        // YAML 1.2.2 §6.9.1: Each node may have at most one anchor
         if matches!(self.look, Tok::Amp) {
-            while let Tok::Amp = self.look {
+            self.bump();
+            if let Tok::Str(StrTok { text, .. }) = &self.look {
+                meta.anchor = Some(text.clone());
                 self.bump();
-                if let Tok::Str(StrTok { text, .. }) = &self.look {
-                    meta.anchor = Some(text.clone());
-                    self.bump();
-                } else {
-                    return Err(Error::Parse("expected anchor name after '&'".into()));
+
+                // Check for second anchor - this is an error
+                if matches!(self.look, Tok::Amp) {
+                    return Err(Error::Parse("multiple anchors on same node not allowed (YAML 1.2.2 §6.9.1)".into()));
                 }
+            } else {
+                return Err(Error::Parse("expected anchor name after '&'".into()));
             }
         }
 
@@ -1097,6 +1198,10 @@ impl<'a> Parser<'a> {
                 return Ok((e, ValueType::Block)); // Block scalar
             }
             Tok::Star => {
+                // YAML 1.2.2 §7.1: Alias nodes are not primary nodes and cannot have anchors
+                if meta.anchor.is_some() {
+                    return Err(Error::Parse("alias node cannot have an anchor (YAML 1.2.2 §7.1)".into()));
+                }
                 self.bump();
                 let name = self.parse_alias_name()?;
                 Elem {
@@ -2082,16 +2187,20 @@ impl<'a> Parser<'a> {
             self.bump();
         }
 
-        // Parse anchor(s) if present
+        // Parse anchor if present
+        // YAML 1.2.2 §6.9.1: Each node may have at most one anchor
         if matches!(self.look, Tok::Amp) {
-            while let Tok::Amp = self.look {
+            self.bump();
+            if let Tok::Str(StrTok { text, .. }) = &self.look {
+                meta.anchor = Some(text.clone());
                 self.bump();
-                if let Tok::Str(StrTok { text, .. }) = &self.look {
-                    meta.anchor = Some(text.clone());
-                    self.bump();
-                } else {
-                    return Err(Error::Parse("expected anchor name after '&'".into()));
+
+                // Check for second anchor - this is an error
+                if matches!(self.look, Tok::Amp) {
+                    return Err(Error::Parse("multiple anchors on same node not allowed (YAML 1.2.2 §6.9.1)".into()));
                 }
+            } else {
+                return Err(Error::Parse("expected anchor name after '&'".into()));
             }
         }
 
@@ -2241,14 +2350,15 @@ impl<'a> Parser<'a> {
                 Ok(e)
             }
             Tok::Star => {
+                // YAML 1.2.2 §7.1: Alias nodes are not primary nodes and cannot have anchors
+                if meta.anchor.is_some() {
+                    return Err(Error::Parse("alias node cannot have an anchor (YAML 1.2.2 §7.1)".into()));
+                }
                 self.bump();
                 let name = self.parse_alias_name()?;
                 let mut e = Elem::new(Node::Alias(name));
                 if e.meta.tag.is_none() {
                     e.meta.tag = meta.tag.take();
-                }
-                if e.meta.anchor.is_none() {
-                    e.meta.anchor = meta.anchor.take();
                 }
                 self.consume_trailing_comment_into(&mut e.meta);
                 Ok(e)

@@ -152,29 +152,18 @@ impl<'a> Lexer<'a> {
             self.i += spaces;
 
             // Handle tabs after leading spaces
-            // Per YAML 1.2.2 §6.2: Tabs are forbidden for *indentation*, but allowed as *separators*.
-            // Once we've counted leading spaces (which establish indentation), any tabs that follow
-            // are content separators, not indentation.
-            // - Tab on empty line → treat as empty line
-            // - Tab followed by content → consume as separator and continue
-            if matches!(self.peek(), Some('\t')) {
-                self.bump(); // consume the tab
-
-                // Check if this is a tab-only line (tab followed by newline)
-                if matches!(self.peek(), Some('\n') | Some('\r')) {
-                    // Tab on otherwise empty line - treat like space-only line
-                    // Emit Tok::Indent to signal an empty line (preserves newlines in scalars)
-                    self.line_start = false;
-                    return Tok::Indent(spaces);
-                }
-
-                // Tab followed by content - acts as separator
-                // Consume additional tabs and spaces as separators
-                while matches!(self.peek(), Some('\t') | Some(' ')) {
-                    self.bump();
-                }
-                // Now continue to parse content (don't return early)
-                // Fall through to the rest of the line_start logic
+            // Per YAML 1.2.2 §6.2: Tabs are *forbidden* for determining indentation level
+            // but allowed as separators between tokens
+            //
+            // The key insight: if a line starts with spaces followed by a tab followed by
+            // non-whitespace content, the tab is being used for indentation (invalid).
+            // But if the line has content, then tabs within that content are separators (valid).
+            //
+            // For now, reject tabs that appear to establish indentation (no preceding spaces,
+            // or tabs used to indent nested content)
+            if spaces == 0 && matches!(self.peek(), Some('\t')) {
+                // Tab at column 0 - definitely indentation, not separator
+                return Tok::TabIndent;
             }
 
             // Blank line or space-only line?
@@ -402,21 +391,6 @@ impl<'a> Lexer<'a> {
                             // Literal newline in the source (not escaped)
                             spanned_lines = true;
                             out.push(c);
-
-                            // YAML 1.2.2 §7.3.1: In block context, continuation lines must be indented
-                            // Check if next character (continuation line) starts at column 0 in block context
-                            if self.flow_depth == 0 {
-                                // In block context - continuation lines at column 0 are invalid
-                                if let Some(next_ch) = self.peek() {
-                                    // If next char is not whitespace (space/tab), it's at column 0
-                                    // This is invalid for continuation lines per YAML 1.2.2 §7.3.1
-                                    if !matches!(next_ch, ' ' | '\t' | '\n' | '\r' | '"') {
-                                        return Tok::Error(
-                                            "double-quoted scalar continuation line must be indented (cannot start at column 0 in block context)".into()
-                                        );
-                                    }
-                                }
-                            }
 
                             // YAML 1.2.2 §7.3.1 & §9.1: Document markers at start of line
                             // terminate even quoted scalars

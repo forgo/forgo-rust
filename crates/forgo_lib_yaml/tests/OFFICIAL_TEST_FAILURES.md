@@ -43,27 +43,6 @@ tree: |
 
 ---
 
-## Test: 4EJS - Invalid tabs as indendation in a mapping
-
-**Tags:** error, mapping, whitespace
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
----
-a:
-———»b:
-———»———»c: value
-tree: |
-+STR
- +DOC ---
-  +MAP
-   =VAL :a
-```
-
----
-
 ## Test: 4HVU - Wrong indendation in Sequence
 
 **Tags:** error, sequence, indent
@@ -332,38 +311,6 @@ tree: |
 
 ---
 
-## Test: 9MQT - Scalar doc with '...' in content
-
-**Tags:** double, scalar
-
-**Failure Type:** Should parse but failed
-
-**Error:**
-```
-Parse error: double-quoted scalar continuation line must be indented (cannot start at column 0 in block context)
-```
-
-**Input YAML:**
-```yaml
---- "a
-...x
-b"
-tree: |
-+STR
- +DOC ---
-  =VAL "a ...x b
- -DOC
--STR
-json: |
-"a ...x b"
-dump: |
---- a ...x b
-emit: |
---- "a ...x b"
-```
-
----
-
 ## Test: B63P - Directive without document
 
 **Tags:** error, directive, document
@@ -483,6 +430,22 @@ tree: |
 
 ---
 
+## Test: CXX2 - Mapping with anchor on document start line
+
+**Tags:** anchor, error, header, mapping
+
+**Failure Type:** Should fail but parsed successfully
+
+**Input YAML:**
+```yaml
+--- &anchor a: b
+tree: |
++STR
+ +DOC ---
+```
+
+---
+
 ## Test: D49Q - Multiline single quoted implicit keys
 
 **Tags:** error, single, mapping
@@ -520,6 +483,23 @@ tree: |
  +DOC ---
   +SEQ []
    =VAL :key
+```
+
+---
+
+## Test: DK95 - DK95-1
+
+**Failure Type:** Should fail but parsed successfully
+
+**Input YAML:**
+```yaml
+foo: "bar
+————»baz"
+tree: |
++STR
+ +DOC
+  +MAP
+   =VAL :foo
 ```
 
 ---
@@ -674,36 +654,51 @@ keep: |+
 
 ---
 
-## Test: FTA2 - Single block sequence with anchor and explicit document start
+## Test: FBC9 - Allowed characters in plain scalars
 
-**Tags:** anchor, header, sequence
+**Tags:** scalar
 
 **Failure Type:** Should parse but failed
 
 **Error:**
 ```
-Parse error: unexpected token at indent 0: Amp
+Parse error: Invalid escape sequence: \]
 ```
 
 **Input YAML:**
 ```yaml
---- &sequence
-- a
+safe: a!"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~
+     !"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~
+safe question mark: ?foo
+safe colon: :foo
+safe dash: -foo
 tree: |
 +STR
- +DOC ---
-  +SEQ &sequence
-   =VAL :a
-  -SEQ
+ +DOC
+  +MAP
+   =VAL :safe
+   =VAL :a!"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~ !"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~
+   =VAL :safe question mark
+   =VAL :?foo
+   =VAL :safe colon
+   =VAL ::foo
+   =VAL :safe dash
+   =VAL :-foo
+  -MAP
  -DOC
 -STR
 json: |
-[
-  "a"
-]
+{
+  "safe": "a!\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~ !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~",
+  "safe question mark": "?foo",
+  "safe colon": ":foo",
+  "safe dash": "-foo"
+}
 dump: |
---- &sequence
-- a
+safe: a!"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~ !"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~
+safe question mark: ?foo
+safe colon: :foo
+safe dash: -foo
 ```
 
 ---
@@ -812,22 +807,6 @@ tree: |
 
 ---
 
-## Test: H7TQ - Extra words on %YAML directive
-
-**Tags:** directive
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-%YAML 1.2 foo
----
-tree: |
-+STR
-```
-
----
-
 ## Test: HU3P - Invalid Mapping in plain scalar
 
 **Tags:** error, mapping, scalar
@@ -844,6 +823,25 @@ tree: |
  +DOC
   +MAP
    =VAL :key
+```
+
+---
+
+## Test: JKF3 - Multiline unidented double quoted block key
+
+**Tags:** indent
+
+**Failure Type:** Should fail but parsed successfully
+
+**Input YAML:**
+```yaml
+- - "bar
+bar": x
+tree: |
++STR
+ +DOC
+  +SEQ
+   +SEQ
 ```
 
 ---
@@ -888,6 +886,22 @@ tree: |
 
 ---
 
+## Test: MUS6 - Directive variants
+
+**Tags:** directive
+
+**Failure Type:** Should fail but parsed successfully
+
+**Input YAML:**
+```yaml
+%YAML 1.1#...
+---
+tree: |
++STR
+```
+
+---
+
 ## Test: N4JP - Bad indentation in mapping
 
 **Tags:** error, mapping, indent, double
@@ -908,38 +922,6 @@ tree: |
     =VAL :key1
     =VAL "quoted1
    -MAP
-```
-
----
-
-## Test: NP9H - Spec Example 7.5. Double Quoted Line Breaks
-
-**Tags:** double, spec, scalar, whitespace, upto-1.2
-
-**Failure Type:** Should parse but failed
-
-**Error:**
-```
-Parse error: double-quoted scalar continuation line must be indented (cannot start at column 0 in block context)
-```
-
-**Input YAML:**
-```yaml
-"folded␣
-to a space,»
-␣
-to a line feed, or »\
- \ »non-content"
-tree: |
-+STR
- +DOC
-  =VAL "folded to a space,\nto a line feed, or \t \tnon-content
- -DOC
--STR
-json: |
-"folded to a space,\nto a line feed, or \t \tnon-content"
-dump: |
-"folded to a space,\nto a line feed, or \t \tnon-content"
 ```
 
 ---
@@ -985,6 +967,56 @@ tree: |
    =VAL "quoted1
    =VAL :key2
    =VAL "quoted2
+```
+
+---
+
+## Test: Q5MG - Tab at beginning of line followed by a flow mapping
+
+**Tags:** flow, whitespace
+
+**Failure Type:** Should parse but failed
+
+**Error:**
+```
+Parse error: tabs are not allowed for indentation
+```
+
+**Input YAML:**
+```yaml
+———»{}
+tree: |
++STR
+ +DOC
+  +MAP {}
+  -MAP
+ -DOC
+-STR
+json: |
+{}
+dump: |
+{}
+```
+
+---
+
+## Test: QB6E - Wrong indented multiline quoted scalar
+
+**Tags:** double, error, indent
+
+**Failure Type:** Should fail but parsed successfully
+
+**Input YAML:**
+```yaml
+---
+quoted: "a
+b
+c"
+tree: |
++STR
+ +DOC ---
+  +MAP
+   =VAL :quoted
 ```
 
 ---
@@ -1176,27 +1208,6 @@ a:
 
 ---
 
-## Test: SR86 - Anchor plus Alias
-
-**Tags:** alias, error
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key1: &a value
-key2: &b *a
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key1
-   =VAL &a :value
-   =VAL :key2
-```
-
----
-
 ## Test: SU5Z - Comment without whitespace after doublequoted scalar
 
 **Tags:** comment, error, double, whitespace
@@ -1212,26 +1223,6 @@ tree: |
   +MAP
    =VAL :key
    =VAL "value
-```
-
----
-
-## Test: SU74 - Anchor and alias as mapping key
-
-**Tags:** error, anchor, alias, mapping
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key1: &alias value1
-&b *alias : value2
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key1
-   =VAL &alias :value1
 ```
 
 ---
