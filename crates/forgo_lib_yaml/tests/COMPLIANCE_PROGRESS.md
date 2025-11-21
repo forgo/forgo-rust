@@ -1,7 +1,7 @@
 # YAML 1.2.2 Compliance Progress
 
 **Last Updated:** 2025-11-20
-**Official Suite:** 250/363 passing (68.9%) | **Spec:** 671/671 (100%) 🎉✅
+**Official Suite:** 251/363 passing (69.1%) | **Spec:** 671/671 (100%) 🎉✅
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| **Official Suite** | **250/363 (68.9%)** | 100% |
+| **Official Suite** | **251/363 (69.1%)** | 100% |
 | **Spec Tests** | **671/671 (100%)** 🎉✅ | 100% |
 | Internal Tests | Passing ✅ | 100% |
 
@@ -17,7 +17,7 @@
 
 ---
 
-## Current Failures (113 tests)
+## Current Failures (112 tests)
 
 ### Should Parse But Failed (2 tests)
 - **S98Z, W9L4**: Block scalar indentation edge cases
@@ -29,7 +29,7 @@
 - **Document markers** (6): 5TRB, 9HCY, 9MMA, B63P, EB22, RXY3
 - **Anchor/alias issues** (7): 4JVG, SR86, SU74, G9HC, GT5M, SY6V, H7J7
 - **Tab handling** (16): 4EJS, Y79Y (7 sub-tests), DK95 (9)
-- **Tag validation** (4): LHL4, U99R, QLJ7, H7TQ
+- **Tag validation** (3): U99R, QLJ7, H7TQ
 - **Multiline implicit keys** (3): 7LBH, D49Q, G7JE
 - **Other** (4): Additional validation gaps
 
@@ -57,6 +57,13 @@ Final spec test: Fix tab indent validation
 ---
 
 ## Recent Victories ✅
+
+**45. Tag Format Validation** (LHL4)
+- Validate tags must be separated from following content by whitespace per YAML 1.2.2 §6.9
+- Reject patterns like `!invalid{}tag` where flow indicators follow tag without whitespace
+- Valid: `!tag {}`, invalid: `!tag{}`
+- File: `lexer.rs:396-402` - Added validation after tag parsing
+- Result: Fixed LHL4, +1 test (250→251)
 
 **44. Quoted Scalar Comment Whitespace** (SU5Z)
 - Validate comments must be separated by whitespace after quoted scalars per YAML 1.2.2 §6.5

@@ -393,6 +393,14 @@ impl<'a> Lexer<'a> {
                     }
                 }
 
+                // YAML 1.2.2 §6.9: Tags must be separated from following content by whitespace
+                // Invalid characters like {} after a tag indicate malformed syntax
+                if let Some(ch) = self.peek() {
+                    if matches!(ch, '{' | '}' | '[' | ']') {
+                        return Tok::Error(format!("invalid tag format: '{}' cannot be followed by '{}' without whitespace", tag, ch));
+                    }
+                }
+
                 Tok::Tag(tag)
             }
             '"' => {
