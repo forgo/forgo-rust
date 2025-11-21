@@ -1,6 +1,6 @@
 # Official YAML Test Suite - Failure Report
 
-**Total Failures:** 69 out of 363 tests (19.0%)
+**Total Failures:** 66 out of 363 tests (18.2%)
 
 ---
 
@@ -823,29 +823,6 @@ tree: |
 
 ---
 
-## Test: JY7Z - Trailing content that looks like a mapping
-
-**Tags:** error, mapping, double
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key1: "quoted1"
-key2: "quoted2" no key: nor value
-key3: "quoted3"
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key1
-   =VAL "quoted1
-   =VAL :key2
-   =VAL "quoted2
-```
-
----
-
 ## Test: LHL4 - Invalid tag
 
 **Tags:** error, tag
@@ -921,29 +898,6 @@ tree: |
     =VAL :y
     =VAL :z
    -MAP
-```
-
----
-
-## Test: Q4CL - Trailing content after quoted value
-
-**Tags:** error, mapping, double
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key1: "quoted1"
-key2: "quoted2" trailing content
-key3: "quoted3"
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key1
-   =VAL "quoted1
-   =VAL :key2
-   =VAL "quoted2
 ```
 
 ---
@@ -1468,26 +1422,6 @@ tree: |
  +DOC
   +MAP
    =VAL :a
-```
-
----
-
-## Test: ZL4Z - Invalid nested mapping
-
-**Tags:** error, mapping
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
----
-a: 'b': c
-tree: |
-+STR
- +DOC ---
-  +MAP
-   =VAL :a
-   =VAL 'b
 ```
 
 ---

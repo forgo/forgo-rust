@@ -1,5 +1,5 @@
 **Goal:** 100% YAML 1.2.2 compliance
-**Current:** 241/363 (66.4%) | **Spec:** 671/671 (100%) 🎉✅
+**Current:** 245/363 (67.5%) | **Spec:** 671/671 (100%) 🎉✅
 
 ## Workflow
 

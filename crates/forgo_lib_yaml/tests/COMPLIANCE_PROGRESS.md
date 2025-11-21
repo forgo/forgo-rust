@@ -1,7 +1,7 @@
 # YAML 1.2.2 Compliance Progress
 
 **Last Updated:** 2025-11-20
-**Official Suite:** 241/363 passing (66.4%) | **Spec:** 671/671 (100%) 🎉✅
+**Official Suite:** 245/363 passing (67.5%) | **Spec:** 671/671 (100%) 🎉✅
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| **Official Suite** | **241/363 (66.4%)** | 100% |
+| **Official Suite** | **245/363 (67.5%)** | 100% |
 | **Spec Tests** | **671/671 (100%)** 🎉✅ | 100% |
 | Internal Tests | Passing ✅ | 100% |
 
@@ -17,14 +17,14 @@
 
 ---
 
-## Current Failures (121 tests)
+## Current Failures (118 tests)
 
 ### Should Parse But Failed (2 tests)
 - **S98Z, W9L4**: Block scalar indentation edge cases
 
-### Should Fail But Parsed (68 tests)
+### Should Fail But Parsed (65 tests)
 - **Invalid indentation** (8): 4HVU, 5LLU, DMG6, EW3V, N4JP, U44R, ZVH3, DK95
-- **Invalid mapping syntax** (12): 236B, 2CMS, 7MNF, 62EZ, BD7L, GDY7, HU3P, JY7Z, P2EQ, Q4CL, TD5N, ZCZ6
+- **Invalid mapping syntax** (8): 236B, 2CMS, 7MNF, BD7L, GDY7, HU3P, TD5N, ZCZ6
 - **Comment placement** (7): 8XDJ, BF9H, BS4K, 9JBA, CVW2, X4QW, SU5Z
 - **Document markers** (6): 5TRB, 9HCY, 9MMA, B63P, EB22, RXY3
 - **Anchor/alias issues** (7): 4JVG, SR86, SU74, G9HC, GT5M, SY6V, H7J7
@@ -57,6 +57,25 @@ Final spec test: Fix tab indent validation
 ---
 
 ## Recent Victories ✅
+
+**40. Quoted Scalar Validation** (Q4CL, JY7Z, P2EQ)
+- Validate content after quoted scalars per YAML 1.2.2
+- Reject immediate text after quoted strings without valid separator
+- Examples now correctly fail:
+  - `key: "value" trailing content` (Q4CL)
+  - `key: "value" no: mapping` (JY7Z)
+  - `- { y: z }- invalid` (P2EQ - flow map case from Victory #39 pattern)
+- Valid separators: newline, comment, EOF, comma, closing bracket
+- File: `parser.rs:1149-1160` - Added validation after quoted scalar parsing
+- Result: Fixed Q4CL, JY7Z, P2EQ, +3 tests (242→245)
+
+**39. Flow Collection Validation** (62EZ)
+- Validate content after flow mapping/sequence closes per YAML 1.2.2
+- Reject immediate text after `}` or `]` without valid separator
+- Example: `x: { y: z }in: valid` now correctly fails (missing separator before "in")
+- Valid separators: newline, comment, EOF, comma, closing bracket
+- Files: `parser.rs:1174-1201` - Added validation after flow map and flow sequence parsing
+- Result: Fixed 62EZ, +1 test (241→242)
 
 **🎉 38. 100% YAML 1.2.2 Spec Compliance Achieved!** (Tab Indentation - Final Spec Test)
 - **MILESTONE**: All 671/671 spec tests now passing!

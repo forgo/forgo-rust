@@ -1145,6 +1145,20 @@ impl<'a> Parser<'a> {
             }
             Tok::Str(s) => {
                 self.bump();
+
+                // YAML 1.2.2: After a quoted scalar, only valid separators are allowed
+                // This prevents invalid YAML like: key: "value" trailing content
+                if s.quoted {
+                    if !matches!(
+                        self.look,
+                        Tok::Newline | Tok::Comment(_) | Tok::Eof | Tok::Comma | Tok::RBrace | Tok::RBracket
+                    ) {
+                        return Err(Error::Parse(
+                            "unexpected content after quoted scalar - must be followed by whitespace or valid separator".into()
+                        ));
+                    }
+                }
+
                 // Start with the first token, then (if unquoted) append the rest of the line.
                 let mut text = s.text.clone();
                 if !s.quoted {
@@ -1173,6 +1187,16 @@ impl<'a> Parser<'a> {
             }
             Tok::LBracket => {
                 let node = self.parse_inline_array_node(parent_indent)?;
+                // After flow sequence closes, validate no invalid content on same line
+                // YAML 1.2.2: flow collections must be followed by valid separators
+                if !matches!(
+                    self.look,
+                    Tok::Newline | Tok::Comment(_) | Tok::Eof | Tok::Comma | Tok::RBrace | Tok::RBracket
+                ) {
+                    return Err(Error::Parse(
+                        "unexpected content after flow sequence - must be followed by whitespace, comma, or closing bracket".into()
+                    ));
+                }
                 Elem { node, meta }
             }
             Tok::LBrace => {
