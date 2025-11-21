@@ -569,6 +569,11 @@ impl<'a> Lexer<'a> {
                 if !terminated {
                     return Tok::Error("Unterminated double-quoted string".to_string());
                 }
+                // YAML 1.2.2 §6.5: Comments must be separated from content by whitespace
+                // Check if '#' immediately follows closing quote without whitespace
+                if matches!(self.peek(), Some('#')) {
+                    return Tok::Error("comment must be separated from content by whitespace".into());
+                }
                 Tok::Str(StrTok {
                     text: out,
                     quoted: true,
@@ -603,6 +608,11 @@ impl<'a> Lexer<'a> {
                 }
                 if !terminated {
                     return Tok::Error("Unterminated single-quoted string".to_string());
+                }
+                // YAML 1.2.2 §6.5: Comments must be separated from content by whitespace
+                // Check if '#' immediately follows closing quote without whitespace
+                if matches!(self.peek(), Some('#')) {
+                    return Tok::Error("comment must be separated from content by whitespace".into());
                 }
                 Tok::Str(StrTok {
                     text: out,
