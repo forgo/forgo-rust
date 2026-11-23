@@ -4,6 +4,8 @@
 //! Whenever it parses:
 //! - every byte is covered by a token, a comment or white space;
 //! - writing the untouched documents gives the input back, byte for byte;
+//! - after an edit (a scalar gets a new value) the output reads back as
+//!   the edited documents;
 //! - rendering them (`Doc::reformat`) gives YAML that parses back to equal
 //!   documents: same content, comments, styles and spellings.
 //!
@@ -82,6 +84,25 @@ fn check(input: &str) -> Option<String> {
         Ok(s) => return Some(format!("source not kept: wrote {s:?}")),
         Err(e) => return Some(format!("emit failed: {e}")),
     }
+    // An edit: give the last plain or quoted scalar a new value. The
+    // output (spliced into the source) must read back as the edited
+    // documents.
+    let mut edited = docs.clone();
+    if let Some(d) = edited
+        .iter_mut()
+        .rev()
+        .find(|d| has_quotable_scalar(d.root()))
+    {
+        edit_last_scalar(d.root_mut());
+        match forgo_lib_yaml::Doc::to_stream_string(&edited) {
+            Ok(out) => match forgo_lib_yaml::Doc::from_stream(&out) {
+                Ok(back) if back == edited => {}
+                Ok(_) => return Some(format!("edit reads back differently: wrote {out:?}")),
+                Err(e) => return Some(format!("edited output doesn't parse ({e}): {out:?}")),
+            },
+            Err(e) => return Some(format!("emit after edit failed: {e}")),
+        }
+    }
     // The emitter itself: rewrite everything.
     let mut docs = docs;
     for d in &mut docs {
@@ -147,6 +168,43 @@ fn check(input: &str) -> Option<String> {
         ));
     }
     None
+}
+
+/// A plain or quoted scalar that can take the value `edited` in its style.
+fn quotable(e: &forgo_lib_yaml::Elem) -> bool {
+    use forgo_lib_yaml::{Node, Style};
+    matches!(e.node, Node::Scalar(_))
+        && matches!(
+            e.meta.style,
+            Some(Style::Plain | Style::SingleQuoted | Style::DoubleQuoted)
+        )
+        && e.meta.tag.is_none()
+}
+
+fn has_quotable_scalar(e: &forgo_lib_yaml::Elem) -> bool {
+    use forgo_lib_yaml::Node;
+    quotable(e)
+        || match &e.node {
+            Node::Map(m) => m.iter().any(|(_, v)| has_quotable_scalar(v)),
+            Node::Seq(s) => s.iter().any(has_quotable_scalar),
+            _ => false,
+        }
+}
+
+/// Set the last quotable scalar (in document order, values only) to `edited`.
+fn edit_last_scalar(e: &mut forgo_lib_yaml::Elem) -> bool {
+    use forgo_lib_yaml::{Node, Scalar};
+    let done = match &mut e.node {
+        Node::Map(m) => m.iter_mut().rev().any(|(_, v)| edit_last_scalar(v)),
+        Node::Seq(s) => s.iter_mut().rev().any(edit_last_scalar),
+        _ => false,
+    };
+    if done || !quotable(e) {
+        return done;
+    }
+    e.node = Node::Scalar(Scalar::Str("edited".into()));
+    e.meta.spelling = None;
+    true
 }
 
 fn variants(text: &str) -> Vec<String> {

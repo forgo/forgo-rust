@@ -765,7 +765,11 @@ impl Node {
 /// A YAML document: the root node, the comments after it, directives and
 /// markers. A parsed document also keeps its source text, so
 /// [`Doc::to_string`] writes it back unchanged except where it was edited.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// Documents compare equal (`==`) when their trees (values, comments,
+/// styles) and document fields are equal; where they came from, and how
+/// their source broke lines, doesn't matter.
+#[derive(Clone, Debug)]
 pub struct Doc {
     pub(crate) root: Elem,
     // True if the original input began with at least one blank line (CR, LF, or CRLF).
@@ -786,6 +790,18 @@ pub struct Doc {
     pub(crate) no_content: bool,
     /// The source text, for format-preserving output (ignored by `==`).
     pub(crate) origin: Origin,
+}
+
+impl PartialEq for Doc {
+    fn eq(&self, other: &Self) -> bool {
+        self.root == other.root
+            && self.footer_comments == other.footer_comments
+            && self.yaml_version == other.yaml_version
+            && self.tag_handles == other.tag_handles
+            && self.explicit_start == other.explicit_start
+            && self.explicit_end == other.explicit_end
+            && self.is_placeholder() == other.is_placeholder()
+    }
 }
 
 /// An error from parsing, checking, writing, or file I/O.

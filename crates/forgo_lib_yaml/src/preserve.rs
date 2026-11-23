@@ -36,7 +36,7 @@ pub(crate) fn doc_text(doc: &Doc) -> Option<String> {
         return Some(src.to_string());
     }
     let orig = reparse(src)?;
-    if same(doc, &orig) {
+    if *doc == orig {
         return Some(src.to_string());
     }
     let text = splice_doc(doc, &orig, src, o.range.0)?;
@@ -135,18 +135,6 @@ fn is_marker(line: &str) -> bool {
 fn reparse(src: &str) -> Option<Doc> {
     let mut docs = compose(src, &crate::ParseOptions::default(), false).ok()?;
     (docs.len() == 1).then(|| docs.swap_remove(0))
-}
-
-/// Equal content and presentation (everything a reader can observe),
-/// ignoring how the source started (leading blank line, line breaks).
-fn same(a: &Doc, b: &Doc) -> bool {
-    a.root == b.root
-        && a.footer_comments == b.footer_comments
-        && a.yaml_version == b.yaml_version
-        && a.tag_handles == b.tag_handles
-        && a.explicit_start == b.explicit_start
-        && a.explicit_end == b.explicit_end
-        && a.is_placeholder() == b.is_placeholder()
 }
 
 /// `back` (parsed from what was written for `doc`) reads as `doc`: equal,
