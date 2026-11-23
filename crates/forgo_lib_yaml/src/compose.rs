@@ -68,6 +68,8 @@ pub(crate) fn compose(
         leading: Vec::new(),
         carry: None,
         stack: Vec::new(),
+        items: Vec::new(),
+        entries: Vec::new(),
         root: None,
         anchors: HashSet::new(),
         doc: None,
@@ -125,6 +127,9 @@ struct Frame {
     key: Option<MapKey>,
     /// End of the last token inside the collection so far.
     end: usize,
+    /// Where the collection's children start on the composer's scratch
+    /// stack (`items` or `entries`).
+    start: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -165,6 +170,11 @@ struct Composer<'a> {
     /// An end-of-line comment that followed only an indicator.
     carry: Option<String>,
     stack: Vec<Frame>,
+    /// Children of the open sequences, innermost last. A finished
+    /// collection takes its children in one exact-size allocation.
+    items: Vec<Elem>,
+    /// Entries of the open mappings, innermost last.
+    entries: Vec<(MapKey, Elem)>,
     root: Option<Elem>,
     anchors: HashSet<String>,
     doc: Option<DocInfo>,
@@ -278,13 +288,20 @@ impl<'a> Composer<'a> {
 
     /// The newest value, item or root.
     fn last_meta_mut(&mut self) -> Option<&mut Meta> {
-        match self.stack.last_mut() {
+        match self.stack.last() {
             None => self.root.as_mut().map(|e| &mut e.meta),
-            Some(f) => match &mut f.elem.node {
-                Node::Seq(items) => items.last_mut().map(|e| &mut e.meta),
-                Node::Map(entries) => entries.last_mut().map(|(_, v)| &mut v.meta),
-                _ => None,
-            },
+            Some(f) if f.elem.node.is_seq() => {
+                let start = f.start;
+                (self.items.len() > start)
+                    .then(|| self.items.last_mut().map(|e| &mut e.meta))
+                    .flatten()
+            }
+            Some(f) => {
+                let start = f.start;
+                (self.entries.len() > start)
+                    .then(|| self.entries.last_mut().map(|(_, v)| &mut v.meta))
+                    .flatten()
+            }
         }
     }
 
@@ -358,13 +375,13 @@ impl<'a> Composer<'a> {
         if let Some(end) = text_end(self.src, &elem.meta.span) {
             f.end = f.end.max(end);
         }
-        match &mut f.elem.node {
-            Node::Seq(items) => items.push(elem),
-            Node::Map(entries) => match f.key.take() {
-                Some(k) => entries.push((k, elem)),
+        if f.elem.node.is_seq() {
+            self.items.push(elem);
+        } else {
+            match f.key.take() {
+                Some(k) => self.entries.push((k, elem)),
                 None => f.key = Some(make_key(elem)),
-            },
-            _ => {}
+            }
         }
     }
 
@@ -568,6 +585,7 @@ impl<'a> Composer<'a> {
                     entry_leading: Vec::new(),
                     key: None,
                     end: span.end.index,
+                    start: self.items.len(),
                 });
             }
             Event::MappingStart { anchor, tag, flow } => {
@@ -586,6 +604,7 @@ impl<'a> Composer<'a> {
                     entry_leading: Vec::new(),
                     key: None,
                     end: span.end.index,
+                    start: self.entries.len(),
                 });
             }
             Event::SequenceEnd | Event::MappingEnd => {
@@ -594,6 +613,12 @@ impl<'a> Composer<'a> {
                     .pop()
                     .expect("a collection end follows its start");
                 let mut elem = frame.elem;
+                // The children, in one allocation of their exact size.
+                match &mut elem.node {
+                    Node::Seq(items) => *items = self.items.drain(frame.start..).collect(),
+                    Node::Map(entries) => *entries = self.entries.drain(frame.start..).collect(),
+                    _ => {}
+                }
                 // Only a flow collection's end is a real position on its
                 // line; a block collection's end event sits at the next
                 // token, so it ends at its last token instead.

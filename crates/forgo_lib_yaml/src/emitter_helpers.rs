@@ -46,9 +46,9 @@ pub(crate) const ROOT_CTX: Ctx = Ctx {
 
 /// The chosen representation of a scalar.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Repr {
+pub(crate) enum Repr<'a> {
     /// Plain text, possibly spanning lines (line breaks folded).
-    Plain(String),
+    Plain(&'a str),
     /// Nothing at all (an empty null).
     Empty,
     Single,
@@ -69,10 +69,17 @@ fn awkward(c: char) -> bool {
 /// Would a plain scalar with this text resolve to something other than a
 /// string under the core schema?
 fn resolves_non_string(s: &str) -> bool {
-    schema::is_null(s)
-        || schema::parse_bool(s).is_some()
-        || schema::is_int(s)
-        || schema::is_float(s)
+    // Nulls, booleans and numbers all start with one of these.
+    match s.as_bytes().first() {
+        None => true,
+        Some(b'~' | b'n' | b'N' | b't' | b'T' | b'f' | b'F' | b'.' | b'+' | b'-' | b'0'..=b'9') => {
+            schema::is_null(s)
+                || schema::parse_bool(s).is_some()
+                || schema::is_int(s)
+                || schema::is_float(s)
+        }
+        Some(_) => false,
+    }
 }
 
 /// Can `line` be one line of a plain scalar? For an implicit key, the
@@ -88,16 +95,29 @@ fn plain_line_ok(line: &str, first: bool, ctx: Ctx) -> bool {
     if matches!(b[0], b' ' | b'\t') || matches!(b[b.len() - 1], b' ' | b'\t') {
         return false;
     }
-    if line.chars().any(awkward) {
-        return false;
+    // One pass: `: ` and ` #` would start a mapping value or a comment,
+    // flow indicators end a flow scalar, and awkward characters need
+    // escapes.
+    let mut unicode_checked = false;
+    for (i, &c) in b.iter().enumerate() {
+        let bad = match c {
+            b':' => matches!(b.get(i + 1), Some(b' ' | b'\t')),
+            b'#' => i > 0 && matches!(b[i - 1], b' ' | b'\t'),
+            b',' | b'[' | b']' | b'{' | b'}' => flow,
+            b'\t' => false,
+            0..=0x1F | 0x7F => true,
+            // Non-ASCII: check the line's characters, once.
+            0x80.. if !unicode_checked => {
+                unicode_checked = true;
+                line.chars().any(awkward)
+            }
+            _ => false,
+        };
+        if bad {
+            return false;
+        }
     }
-    if flow && line.chars().any(is_flow_indicator) {
-        return false;
-    }
-    if line.contains(": ") || line.contains(":\t") || (line.ends_with(':') && !key) {
-        return false;
-    }
-    if line.contains(" #") || line.contains("\t#") {
+    if line.ends_with(':') && !key {
         return false;
     }
     let c0 = line.chars().next().unwrap();
@@ -159,7 +179,7 @@ pub(crate) fn plain_text_ok(s: &str, ctx: Ctx) -> bool {
         }
         return true;
     }
-    if ctx.key && s.chars().count() > 1024 {
+    if ctx.key && s.len() > 1024 && s.chars().count() > 1024 {
         return false;
     }
     plain_line_ok(s, true, ctx)
@@ -206,7 +226,7 @@ fn spelling_ok(spelling: &str, scalar: &Scalar) -> bool {
 }
 
 /// Choose how to write `scalar` with metadata `meta` in context `ctx`.
-pub(crate) fn scalar_repr(scalar: &Scalar, meta: &Meta, ctx: Ctx) -> Repr {
+pub(crate) fn scalar_repr<'a>(scalar: &'a Scalar, meta: &'a Meta, ctx: Ctx) -> Repr<'a> {
     let tagged = meta.tag.is_some();
     match scalar {
         Scalar::Str(s) => match meta.style {
@@ -231,7 +251,7 @@ pub(crate) fn scalar_repr(scalar: &Scalar, meta: &Meta, ctx: Ctx) -> Repr {
             Some(Style::Plain) | Some(Style::Block) | Some(Style::Flow) => {
                 // A tag fixes the type, so text like `23` can stay plain.
                 if plain_ok(s, ctx) || (tagged && plain_text_ok(s, ctx)) {
-                    Repr::Plain(s.clone())
+                    Repr::Plain(s)
                 } else if s.is_empty() && tagged {
                     // A tag on an empty node: `!!str` alone.
                     Repr::Empty
@@ -241,7 +261,7 @@ pub(crate) fn scalar_repr(scalar: &Scalar, meta: &Meta, ctx: Ctx) -> Repr {
             }
             None => {
                 if plain_ok(s, ctx) {
-                    Repr::Plain(s.clone())
+                    Repr::Plain(s)
                 } else if ctx.block_ok
                     && s.contains('\n')
                     && block_ok(s)
@@ -276,14 +296,14 @@ pub(crate) fn scalar_repr(scalar: &Scalar, meta: &Meta, ctx: Ctx) -> Repr {
                         return Repr::Empty;
                     }
                 } else {
-                    return Repr::Plain(sp.clone());
+                    return Repr::Plain(sp);
                 }
             }
             Repr::Plain(match other {
-                Scalar::Null => "null".into(),
-                Scalar::Bool(true) => "true".into(),
-                Scalar::Bool(false) => "false".into(),
-                Scalar::Num { text } => text.clone(),
+                Scalar::Null => "null",
+                Scalar::Bool(true) => "true",
+                Scalar::Bool(false) => "false",
+                Scalar::Num { text } => text,
                 Scalar::Str(_) => unreachable!(),
             })
         }
@@ -291,12 +311,13 @@ pub(crate) fn scalar_repr(scalar: &Scalar, meta: &Meta, ctx: Ctx) -> Repr {
 }
 
 /// The text a scalar's value has for representations that need it.
-pub(crate) fn scalar_text(scalar: &Scalar) -> String {
+pub(crate) fn scalar_text(scalar: &Scalar) -> &str {
     match scalar {
-        Scalar::Str(s) => s.clone(),
-        Scalar::Num { text } => text.clone(),
-        Scalar::Bool(b) => b.to_string(),
-        Scalar::Null => String::new(),
+        Scalar::Str(s) => s,
+        Scalar::Num { text } => text,
+        Scalar::Bool(true) => "true",
+        Scalar::Bool(false) => "false",
+        Scalar::Null => "",
     }
 }
 
@@ -304,6 +325,10 @@ pub(crate) fn scalar_text(scalar: &Scalar) -> String {
 /// breaks becomes `k + 1` breaks (an empty line per break), continuation
 /// lines start at `indent`.
 pub(crate) fn write_folded_lines(s: &str, indent: usize, out: &mut String) {
+    if !s.contains('\n') {
+        out.push_str(s);
+        return;
+    }
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\n' {
@@ -484,8 +509,12 @@ pub(crate) fn emit_quoted(s: &str, out: &mut String) {
 
 /// Emit indentation (spaces).
 pub(crate) fn emit_indent(n: usize, out: &mut String) {
-    for _ in 0..n {
-        out.push(' ');
+    const SPACES: &str = "                                ";
+    let mut n = n;
+    while n > 0 {
+        let k = n.min(SPACES.len());
+        out.push_str(&SPACES[..k]);
+        n -= k;
     }
 }
 

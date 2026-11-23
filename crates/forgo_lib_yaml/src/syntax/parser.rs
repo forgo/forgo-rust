@@ -195,7 +195,7 @@ impl<'a> Parser<'a> {
 
     fn parse_document_start(&mut self, first: bool) -> Res<Ev<'a>> {
         // `...` may repeat between documents, and may even start the stream.
-        while *self.peek_kind()? == TokenKind::DocumentEnd {
+        while matches!(*self.peek_kind()?, TokenKind::DocumentEnd) {
             self.skip()?;
             self.prev_doc_end_explicit = true;
         }
@@ -211,7 +211,7 @@ impl<'a> Parser<'a> {
             | TokenKind::TagDirective(..)
             | TokenKind::ReservedDirective
             | TokenKind::DocumentStart => {
-                let has_directives = tok.kind != TokenKind::DocumentStart;
+                let has_directives = !matches!(tok.kind, TokenKind::DocumentStart);
                 if has_directives && !self.prev_doc_end_explicit {
                     return Err(err(
                         start,
@@ -220,7 +220,7 @@ impl<'a> Parser<'a> {
                 }
                 let (version, tags) = self.process_directives()?;
                 let tok = self.peek()?;
-                if tok.kind != TokenKind::DocumentStart {
+                if !matches!(tok.kind, TokenKind::DocumentStart) {
                     return Err(err(tok.start, "expected `---` after the directives"));
                 }
                 let t = self.skip()?;
@@ -325,7 +325,7 @@ impl<'a> Parser<'a> {
         let tok = self.peek()?;
         let start = tok.start;
         let mut end = start;
-        let explicit = tok.kind == TokenKind::DocumentEnd;
+        let explicit = matches!(tok.kind, TokenKind::DocumentEnd);
         if explicit {
             end = self.skip()?.end;
         }
@@ -555,7 +555,7 @@ impl<'a> Parser<'a> {
 
     fn parse_indentless_sequence_entry(&mut self) -> Res<Ev<'a>> {
         let tok = self.peek()?;
-        if tok.kind == TokenKind::BlockEntry {
+        if matches!(tok.kind, TokenKind::BlockEntry) {
             let mark = self.skip()?.end;
             if matches!(
                 self.peek_kind()?,
@@ -610,7 +610,7 @@ impl<'a> Parser<'a> {
 
     fn parse_block_mapping_value(&mut self) -> Res<Ev<'a>> {
         let tok = self.peek()?;
-        if tok.kind == TokenKind::Value {
+        if matches!(tok.kind, TokenKind::Value) {
             let mark = self.skip()?.end;
             if matches!(
                 self.peek_kind()?,
@@ -637,10 +637,10 @@ impl<'a> Parser<'a> {
         if first {
             self.skip()?; // FLOW-SEQUENCE-START
         }
-        if *self.peek_kind()? != TokenKind::FlowSequenceEnd {
+        if !matches!(*self.peek_kind()?, TokenKind::FlowSequenceEnd) {
             if !first {
                 let tok = self.peek()?;
-                if tok.kind == TokenKind::FlowEntry {
+                if matches!(tok.kind, TokenKind::FlowEntry) {
                     self.skip()?;
                 } else {
                     return Err(err(tok.start, "expected `,` or `]` in flow sequence"));
@@ -702,7 +702,7 @@ impl<'a> Parser<'a> {
 
     fn parse_flow_sequence_entry_mapping_value(&mut self) -> Res<Ev<'a>> {
         let tok = self.peek()?;
-        if tok.kind == TokenKind::Value {
+        if matches!(tok.kind, TokenKind::Value) {
             self.skip()?;
             if !matches!(
                 self.peek_kind()?,
@@ -721,10 +721,10 @@ impl<'a> Parser<'a> {
         if first {
             self.skip()?; // FLOW-MAPPING-START
         }
-        if *self.peek_kind()? != TokenKind::FlowMappingEnd {
+        if !matches!(*self.peek_kind()?, TokenKind::FlowMappingEnd) {
             if !first {
                 let tok = self.peek()?;
-                if tok.kind == TokenKind::FlowEntry {
+                if matches!(tok.kind, TokenKind::FlowEntry) {
                     self.skip()?;
                 } else {
                     return Err(err(tok.start, "expected `,` or `}` in flow mapping"));
@@ -771,7 +771,7 @@ impl<'a> Parser<'a> {
             self.state = State::FlowMappingKey;
             return Ok(empty_scalar(m));
         }
-        if tok.kind == TokenKind::Value {
+        if matches!(tok.kind, TokenKind::Value) {
             self.skip()?;
             if !matches!(
                 self.peek_kind()?,

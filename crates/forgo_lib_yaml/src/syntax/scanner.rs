@@ -199,7 +199,7 @@ impl<'a> Scanner<'a> {
         self.peek()?;
         self.tokens_parsed += 1;
         let t = self.tokens.pop_front().expect("token queue is non-empty");
-        if t.kind == TokenKind::StreamEnd {
+        if matches!(t.kind, TokenKind::StreamEnd) {
             self.stream_end_produced = true;
         }
         Ok(t)
@@ -464,7 +464,7 @@ impl<'a> Scanner<'a> {
                 || self
                     .tokens
                     .back()
-                    .is_some_and(|t| t.kind == TokenKind::StreamEnd)
+                    .is_some_and(|t| matches!(t.kind, TokenKind::StreamEnd))
             {
                 return Ok(());
             }
@@ -840,7 +840,7 @@ impl<'a> Scanner<'a> {
         self.mark.index += 3;
         self.mark.col += 3;
         let end = self.mark;
-        if kind == TokenKind::DocumentEnd {
+        if matches!(kind, TokenKind::DocumentEnd) {
             self.doc_end_line = Some(start.line);
         }
         self.push(kind, start, end);
@@ -1892,7 +1892,7 @@ mod tests {
         let mut out = Vec::new();
         loop {
             let t = s.next_token().unwrap();
-            let done = t.kind == TokenKind::StreamEnd;
+            let done = matches!(t.kind, TokenKind::StreamEnd);
             out.push(match t.kind {
                 TokenKind::Scalar(v, ..) => format!("S({v})"),
                 k => format!("{k:?}"),
@@ -1923,7 +1923,7 @@ mod tests {
     #[test]
     fn comments_go_to_the_side_buffer() {
         let mut s = Scanner::new("# head\na: b # tail\n");
-        while s.next_token().unwrap().kind != TokenKind::StreamEnd {}
+        while !matches!(s.next_token().unwrap().kind, TokenKind::StreamEnd) {}
         assert_eq!(s.comments.len(), 2);
         assert_eq!(s.comments[0].text, " head");
         assert!(!s.comments[0].trailing);

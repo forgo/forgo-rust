@@ -93,6 +93,12 @@ fn trailing(e: &Elem, out: &mut String) {
     }
 }
 
+/// Short enough for an implicit key (the limit is 1024 characters; this
+/// leaves room for properties and the indicator).
+fn short_key(s: &str) -> bool {
+    s.len() <= 1000 || s.chars().count() <= 1000
+}
+
 /// Written as a flow collection.
 fn is_flow(e: &Elem) -> bool {
     match &e.node {
@@ -192,15 +198,15 @@ impl Emitter {
     /// Write a scalar with the chosen representation (props are the caller's).
     /// `indent` is the column for continuation lines; `parent` is the column
     /// a block scalar's indentation indicator counts from.
-    fn write_scalar(
+    fn write_scalar<'a>(
         &self,
-        sc: &Scalar,
-        e: &Elem,
+        sc: &'a Scalar,
+        e: &'a Elem,
         ctx: Ctx,
         indent: usize,
         parent: usize,
         out: &mut String,
-    ) -> Repr {
+    ) -> Repr<'a> {
         let repr = scalar_repr(sc, &e.meta, ctx);
         self.write_repr(&repr, sc, e, indent, parent, out);
         repr
@@ -219,10 +225,10 @@ impl Emitter {
         match repr {
             Repr::Plain(t) => write_folded_lines(t, indent, out),
             Repr::Empty => {}
-            Repr::Single => emit_single(&text, indent, out),
-            Repr::Double => emit_quoted(&text, out),
+            Repr::Single => emit_single(text, indent, out),
+            Repr::Double => emit_quoted(text, out),
             Repr::Block { folded, header } => emit_block(
-                &text,
+                text,
                 *folded,
                 *header,
                 parent,
@@ -282,7 +288,7 @@ impl Emitter {
                 // it as content without an indentation indicator.
                 if let Repr::Block { header, .. } = &mut repr
                     && followed_by_comments
-                    && no_content_line(&scalar_text(sc))
+                    && no_content_line(scalar_text(sc))
                 {
                     header.indent.get_or_insert(2);
                 }
@@ -399,7 +405,7 @@ impl Emitter {
                 emit_indent(indent, out);
                 seq_step = self.indent;
             }
-            MapKey::Str(s) if !s.contains('\n') && s.chars().count() <= 1000 => emit_quoted(s, out),
+            MapKey::Str(s) if !s.contains('\n') && short_key(s) => emit_quoted(s, out),
             // A multi-line plain key: `? a`, an empty line, `b`.
             MapKey::Str(s) if plain_ok(s, BLOCK_VALUE) => {
                 out.push_str("? ");
@@ -437,9 +443,7 @@ impl Emitter {
         let mut s = String::new();
         match k {
             MapKey::Str(t) if plain_ok(t, key_ctx) => s.push_str(t),
-            MapKey::Str(t) if !t.contains('\n') && t.chars().count() <= 1000 => {
-                emit_quoted(t, &mut s)
-            }
+            MapKey::Str(t) if !t.contains('\n') && short_key(t) => emit_quoted(t, &mut s),
             MapKey::Str(_) => return None,
             MapKey::Complex(ke) => {
                 if !self.write_inline_key(ke, key_ctx, &mut s) {
@@ -487,7 +491,7 @@ impl Emitter {
 
     /// Write a complex key as an implicit key if it can be one.
     fn write_inline_key(&self, ke: &Elem, key_ctx: Ctx, out: &mut String) -> bool {
-        let short = |s: &str| !s.contains('\n') && s.chars().count() <= 1000;
+        let short = |s: &str| !s.contains('\n') && short_key(s);
         if !ke.meta.leading_comments.is_empty() || ke.meta.trailing_comment.is_some() {
             return false;
         }
@@ -557,7 +561,7 @@ impl Emitter {
         match &v.node {
             Node::Scalar(sc) => {
                 out.push(' ');
-                out.push_str(&props_string(v));
+                write_props(&v.meta, out);
                 let repr = self.write_scalar(sc, v, BLOCK_VALUE, indent + self.indent, indent, out);
                 if !matches!(repr, Repr::Block { .. }) {
                     if repr == Repr::Empty {
@@ -604,21 +608,23 @@ impl Emitter {
     /// Emit a node inside a flow collection (no line break at the end).
     /// `indent` is the column for continuation lines.
     fn emit_flow_node(&self, e: &Elem, ctx: Ctx, indent: usize, out: &mut String) {
-        let mut node = String::new();
-        write_props(&e.meta, &mut node);
+        let start = out.len();
+        write_props(&e.meta, out);
         match &e.node {
             Node::Scalar(sc) => {
-                if self.write_scalar(sc, e, ctx, indent, indent, &mut node) == Repr::Empty {
-                    trim_trailing_spaces(&mut node);
+                if self.write_scalar(sc, e, ctx, indent, indent, out) == Repr::Empty {
+                    // Drop the space after the properties (not before them).
+                    while out.len() > start && out.ends_with(' ') {
+                        out.pop();
+                    }
                 }
             }
             Node::Alias(name) => {
-                node.push('*');
-                node.push_str(name);
+                out.push('*');
+                out.push_str(name);
             }
-            Node::Seq(_) | Node::Map(_) => self.emit_flow(e, indent + self.indent, &mut node),
+            Node::Seq(_) | Node::Map(_) => self.emit_flow(e, indent + self.indent, out),
         }
-        out.push_str(&node);
     }
 
     /// Emit a flow mapping key (without the `:`).
@@ -673,10 +679,12 @@ impl Emitter {
                     let (k, v) = &entries[i];
                     self.emit_flow_key(k, indent, out);
                     out.push(':');
-                    let mut value = String::from(" ");
-                    self.emit_flow_node(v, FLOW_VALUE, indent, &mut value);
-                    if !value.trim().is_empty() {
-                        out.push_str(&value);
+                    // `key:` alone when the value writes nothing.
+                    let at = out.len();
+                    out.push(' ');
+                    self.emit_flow_node(v, FLOW_VALUE, indent, out);
+                    if out[at..].trim().is_empty() {
+                        out.truncate(at);
                     }
                 }
                 _ => unreachable!(),
