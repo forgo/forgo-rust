@@ -9,6 +9,8 @@
 //!     lines above it;
 //!   - a changed scalar, alias or flow value whose new text fits on one
 //!     line replaces the old text in place, keeping what surrounds it;
+//!   - in a flow collection that kept its shape (a JSON-style document,
+//!     say), each changed scalar is replaced in place, at any depth;
 //!   - a changed nested block collection is handled the same way, inside;
 //!   - anything else (new entries, other changes) is rendered by the
 //!     emitter, in the indentation style the file uses.
@@ -299,6 +301,24 @@ fn splice_doc(cur: &Doc, orig: &Doc, src: &str, base: usize) -> Option<String> {
         return None;
     }
     let (r, o) = (&cur.root, &orig.root);
+    let sp = Splicer {
+        src,
+        base,
+        em: infer_layout(o, src),
+        crlf: src.contains("\r\n"),
+    };
+    // A flow root (a JSON-style document) that kept its shape.
+    if o.meta.is_flow()
+        && cur.footer_comments == orig.footer_comments
+        && cur.explicit_end == orig.explicit_end
+        && let (Some(range), Some(text)) = (o.meta.span.range(), sp.patch_flow(r, o))
+    {
+        return Some(format!(
+            "{}{text}{}",
+            &src[..range.start],
+            &src[range.end..]
+        ));
+    }
     if !block_collection(r)
         || !block_collection(o)
         || r.node.is_map() != o.node.is_map()
@@ -307,12 +327,6 @@ fn splice_doc(cur: &Doc, orig: &Doc, src: &str, base: usize) -> Option<String> {
     {
         return None;
     }
-    let sp = Splicer {
-        src,
-        base,
-        em: infer_layout(o, src),
-        crlf: src.contains("\r\n"),
-    };
     let first = sp.first_head(o);
     let b0 = if has_props(o) {
         sp.after_props(o, o.meta.span.range()?.start)
@@ -781,9 +795,13 @@ impl Splicer<'_> {
             return Some(());
         }
         // A scalar, alias or flow value (on the entry's line or below it):
-        // replace its text, keeping what surrounds it.
+        // replace its text, keeping what surrounds it. A flow collection
+        // that kept its shape keeps its layout too.
         if one_line_kind(v0) && ve > vs && line_end_after(src, ve) == end {
-            let text = self.em.inline_value(v, col)?;
+            let text = match self.patch_flow(v, v0) {
+                Some(t) => t,
+                None => self.em.inline_value(v, col)?,
+            };
             out.push_str(&src[body..vs]);
             self.push_fresh(&text, out);
             if v.meta.trailing_comment == v0.meta.trailing_comment {
@@ -800,6 +818,84 @@ impl Splicer<'_> {
             return Some(());
         }
         None
+    }
+
+    /// The text of flow collection `orig` with the changes in `cur` made in
+    /// place, when its shape (length, keys, properties, comments) didn't
+    /// change: changed scalars and aliases are replaced, nested flow
+    /// collections patched the same way.
+    fn patch_flow(&self, cur: &Elem, orig: &Elem) -> Option<String> {
+        let r = orig.meta.span.range()?;
+        let mut patches = Vec::new();
+        self.flow_patches(cur, orig, &mut patches)?;
+        patches.sort_by_key(|p| p.0);
+        let mut out = String::new();
+        let mut at = r.start;
+        for (s, e, text) in patches {
+            if s < at || e > r.end {
+                return None;
+            }
+            out.push_str(&self.src[at..s]);
+            out.push_str(&text);
+            at = e;
+        }
+        out.push_str(&self.src[at..r.end]);
+        Some(out)
+    }
+
+    fn flow_patches(
+        &self,
+        cur: &Elem,
+        orig: &Elem,
+        patches: &mut Vec<(usize, usize, String)>,
+    ) -> Option<()> {
+        if !orig.meta.is_flow()
+            || !same_meta(&cur.meta, &orig.meta)
+            || cur.meta.leading_comments != orig.meta.leading_comments
+        {
+            return None;
+        }
+        match (&cur.node, &orig.node) {
+            (Node::Seq(a), Node::Seq(b)) if a.len() == b.len() => {
+                for (x, y) in a.iter().zip(b) {
+                    self.flow_patch(x, y, false, patches)?;
+                }
+            }
+            (Node::Map(a), Node::Map(b)) if a.len() == b.len() => {
+                for ((k, x), (l, y)) in a.iter().zip(b) {
+                    if k != l {
+                        return None;
+                    }
+                    self.flow_patch(x, y, true, patches)?;
+                }
+            }
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn flow_patch(
+        &self,
+        cur: &Elem,
+        orig: &Elem,
+        in_map: bool,
+        patches: &mut Vec<(usize, usize, String)>,
+    ) -> Option<()> {
+        if cur == orig {
+            return Some(());
+        }
+        let collection = |e: &Elem| matches!(e.node, Node::Seq(_) | Node::Map(_));
+        if collection(cur) && collection(orig) {
+            return self.flow_patches(cur, orig, patches);
+        }
+        let r = orig.meta.span.range()?;
+        let comments_same = cur.meta.leading_comments == orig.meta.leading_comments
+            && cur.meta.trailing_comment == orig.meta.trailing_comment;
+        if collection(cur) || collection(orig) || !comments_same || r.end <= r.start {
+            return None;
+        }
+        patches.push((r.start, r.end, self.em.flow_text(cur, in_map)?));
+        Some(())
     }
 
     /// A renamed key whose value didn't change: write the new key, keep

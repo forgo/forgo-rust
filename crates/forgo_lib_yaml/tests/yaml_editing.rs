@@ -5,8 +5,8 @@
 //! one edit at a time, and the output must be exactly the source with only
 //! the edited entry changed:
 //!
-//! - `replace`: a scalar value of a block collection gets a new value:
-//!   only its text changes;
+//! - `replace`: a scalar value (in a block collection, or at any depth of
+//!   a flow collection) gets a new value: only its text changes;
 //! - `delete`: an entry (not the first) of a block collection is removed:
 //!   exactly its lines go, with the comments and blank lines above it;
 //! - `append`: a block collection gets a new last entry: exactly one new
@@ -84,6 +84,29 @@ fn collections(e: &Elem, path: &mut Vec<Step>, out: &mut Vec<Vec<Step>>) {
         path.push(step);
         collections(child, path, out);
         path.pop();
+    }
+}
+
+/// Paths of the scalars at `e` (itself, or inside it through flow
+/// collections; block collections have their own turn).
+fn scalar_paths(e: &Elem, path: &mut Vec<Step>, out: &mut Vec<Vec<Step>>) {
+    match &e.node {
+        Node::Scalar(_) => out.push(path.clone()),
+        Node::Map(m) if !block(e) => {
+            for (i, (_, v)) in m.iter().enumerate() {
+                path.push(Step::Value(i));
+                scalar_paths(v, path, out);
+                path.pop();
+            }
+        }
+        Node::Seq(s) if !block(e) => {
+            for (i, v) in s.iter().enumerate() {
+                path.push(Step::Item(i));
+                scalar_paths(v, path, out);
+                path.pop();
+            }
+        }
+        _ => {}
     }
 }
 
@@ -189,6 +212,30 @@ impl Run<'_> {
     }
 }
 
+/// Give the scalar at `path` a new value: only its text may change.
+fn replace(run: &mut Run, text: &str, d: usize, path: Vec<Step>) {
+    let v = get(run.docs[d].root(), &path);
+    let (Node::Scalar(_), Some(r)) = (&v.node, range(v)) else {
+        return;
+    };
+    let quoted = match v.meta.style {
+        Some(Style::Plain) => "edited",
+        Some(Style::SingleQuoted) => "'edited'",
+        Some(Style::DoubleQuoted) => "\"edited\"",
+        _ => return,
+    };
+    if v.meta.anchor.is_some() || v.meta.tag.is_some() {
+        return;
+    }
+    let expected = format!("{}{quoted}{}", &text[..r.start], &text[r.end..]);
+    let p = path.clone();
+    run.check("replace", d, &path, expected, move |doc| {
+        let e = get_mut(doc.root_mut(), &p);
+        e.node = Node::Scalar(Scalar::Str("edited".into()));
+        e.meta.spelling = None;
+    });
+}
+
 fn edit_all(name: &str, text: &str) -> (usize, Vec<String>) {
     let docs = match Doc::from_stream(text) {
         Ok(d) => d,
@@ -202,6 +249,15 @@ fn edit_all(name: &str, text: &str) -> (usize, Vec<String>) {
     };
     let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
     for d in 0..run.docs.len() {
+        // A flow root (a JSON-style document): its scalars, at any depth.
+        let root = run.docs[d].root();
+        if !block(root) && !matches!(root.node, Node::Scalar(_)) {
+            let mut targets = Vec::new();
+            scalar_paths(root, &mut Vec::new(), &mut targets);
+            for path in targets {
+                replace(&mut run, text, d, path);
+            }
+        }
         let mut paths = Vec::new();
         collections(run.docs[d].root(), &mut Vec::new(), &mut paths);
         for cpath in paths {
@@ -212,29 +268,16 @@ fn edit_all(name: &str, text: &str) -> (usize, Vec<String>) {
                 _ => Step::Item(i),
             };
 
-            // replace
+            // replace: each scalar value of this block collection, and each
+            // scalar at any depth of a flow collection it holds
+            let mut targets = Vec::new();
             for (i, v) in kids.iter().enumerate() {
-                let (Node::Scalar(_), Some(r)) = (&v.node, range(v)) else {
-                    continue;
-                };
-                let quoted = match v.meta.style {
-                    Some(Style::Plain) => "edited",
-                    Some(Style::SingleQuoted) => "'edited'",
-                    Some(Style::DoubleQuoted) => "\"edited\"",
-                    _ => continue,
-                };
-                if v.meta.anchor.is_some() || v.meta.tag.is_some() {
-                    continue;
-                }
                 let mut path = cpath.clone();
                 path.push(step(i));
-                let expected = format!("{}{quoted}{}", &text[..r.start], &text[r.end..]);
-                let p = path.clone();
-                run.check("replace", d, &path, expected, move |doc| {
-                    let e = get_mut(doc.root_mut(), &p);
-                    e.node = Node::Scalar(Scalar::Str("edited".into()));
-                    e.meta.spelling = None;
-                });
+                scalar_paths(v, &mut path, &mut targets);
+            }
+            for path in targets {
+                replace(&mut run, text, d, path);
             }
 
             // delete
@@ -343,7 +386,7 @@ fn edit_all(name: &str, text: &str) -> (usize, Vec<String>) {
 fn inputs() -> Vec<(String, String)> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
     let mut out = Vec::new();
-    for name in ["k8s.yaml", "workflow.yaml", "compose.yaml"] {
+    for name in ["k8s.yaml", "workflow.yaml", "compose.yaml", "package.json"] {
         let text = std::fs::read_to_string(dir.join("editing").join(name)).unwrap();
         out.push((format!("{name} (CRLF)"), text.replace('\n', "\r\n")));
         out.push((

@@ -476,6 +476,15 @@ impl Emitter {
         (!s.contains('\n')).then_some(s)
     }
 
+    /// A node inside a flow collection, on one line (`None` if it needs
+    /// more): a mapping value when `in_map`, else a sequence item.
+    pub(crate) fn flow_text(&self, e: &Elem, in_map: bool) -> Option<String> {
+        let mut s = String::new();
+        let ctx = if in_map { FLOW_VALUE } else { FLOW_ITEM };
+        self.emit_flow_node(e, ctx, self.indent, &mut s);
+        (!s.is_empty() && !s.contains('\n')).then_some(s)
+    }
+
     /// Write a complex key as an implicit key if it can be one.
     fn write_inline_key(&self, ke: &Elem, key_ctx: Ctx, out: &mut String) -> bool {
         let short = |s: &str| !s.contains('\n') && s.chars().count() <= 1000;
