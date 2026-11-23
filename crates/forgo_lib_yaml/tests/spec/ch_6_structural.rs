@@ -116,13 +116,7 @@ fn ch_6_1_07_indentation_after_sequence_indicator() {
 #[test]
 fn ch_6_2_01_space_after_colon() {
     // Required space after : in mappings
-    Fixture::new(
-        "6.2",
-        1,
-        "Space after colon in mapping",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("6.2", 1, "Space after colon in mapping", "key: value\n").run();
 }
 
 #[test]
@@ -134,20 +128,17 @@ fn ch_6_2_02_no_space_after_colon_error() {
     // Most parsers require space after colon in block context
     // May succeed in flow context {key:value}
     if result.is_err() {
-        assert!(result.is_err(), "Missing space after colon should fail in block context");
+        assert!(
+            result.is_err(),
+            "Missing space after colon should fail in block context"
+        );
     }
 }
 
 #[test]
 fn ch_6_2_03_multiple_spaces_after_colon() {
     // Multiple spaces are allowed
-    Fixture::new(
-        "6.2",
-        3,
-        "Multiple spaces after colon",
-        "key:   value\n",
-    )
-    .run();
+    Fixture::new("6.2", 3, "Multiple spaces after colon", "key:   value\n").run();
 }
 
 #[test]
@@ -165,13 +156,7 @@ fn ch_6_2_04_space_after_dash() {
 #[test]
 fn ch_6_2_05_space_after_comma_flow() {
     // Separation in flow collections
-    Fixture::new(
-        "6.2",
-        5,
-        "Space after comma in flow",
-        "list: [a, b, c]\n",
-    )
-    .run();
+    Fixture::new("6.2", 5, "Space after comma in flow", "list: [a, b, c]\n").run();
 }
 
 #[test]
@@ -316,8 +301,12 @@ fn ch_6_4_04_empty_lines_preserve_structure() {
 
     // Both should parse to same structure
     use forgo_lib_yaml::Node;
-    let Node::Map(m1) = doc1.root().node() else { panic!("Expected map"); };
-    let Node::Map(m2) = doc2.root().node() else { panic!("Expected map"); };
+    let Node::Map(m1) = doc1.root().node() else {
+        panic!("Expected map");
+    };
+    let Node::Map(m2) = doc2.root().node() else {
+        panic!("Expected map");
+    };
 
     assert_eq!(m1.len(), m2.len());
 }
@@ -647,13 +636,7 @@ fn ch_6_8_2_03_yaml_and_tag_directives() {
 // 6.8.2.1 Tag Handles
 #[test]
 fn ch_6_8_2_1_01_primary_tag_handle() {
-    Fixture::new(
-        "6.8.2.1",
-        1,
-        "Primary tag handle (!)",
-        "- !local value\n",
-    )
-    .run();
+    Fixture::new("6.8.2.1", 1, "Primary tag handle (!)", "- !local value\n").run();
 }
 
 #[test]
@@ -697,35 +680,17 @@ fn ch_6_8_2_2_01_verbatim_tag() {
 // 6.9.1 Node Tags
 #[test]
 fn ch_6_9_1_01_tag_on_scalar() {
-    Fixture::new(
-        "6.9.1",
-        1,
-        "Tag on scalar value",
-        "value: !!str 123\n",
-    )
-    .run();
+    Fixture::new("6.9.1", 1, "Tag on scalar value", "value: !!str 123\n").run();
 }
 
 #[test]
 fn ch_6_9_1_02_tag_on_sequence() {
-    Fixture::new(
-        "6.9.1",
-        2,
-        "Tag on sequence",
-        "list: !!seq\n  - a\n  - b\n",
-    )
-    .run();
+    Fixture::new("6.9.1", 2, "Tag on sequence", "list: !!seq\n  - a\n  - b\n").run();
 }
 
 #[test]
 fn ch_6_9_1_03_tag_on_mapping() {
-    Fixture::new(
-        "6.9.1",
-        3,
-        "Tag on mapping",
-        "map: !!map\n  key: value\n",
-    )
-    .run();
+    Fixture::new("6.9.1", 3, "Tag on mapping", "map: !!map\n  key: value\n").run();
 }
 
 #[test]
@@ -801,68 +766,32 @@ fn ch_6_9_2_05_anchor_with_tag() {
 
 #[test]
 fn ch_6_10_01_str_tag() {
-    Fixture::new(
-        "6.10",
-        1,
-        "Explicit !!str tag",
-        "version: !!str 1.0\n",
-    )
-    .run();
+    Fixture::new("6.10", 1, "Explicit !!str tag", "version: !!str 1.0\n").run();
 }
 
 #[test]
 fn ch_6_10_02_int_tag() {
-    Fixture::new(
-        "6.10",
-        2,
-        "Explicit !!int tag",
-        "count: !!int 42\n",
-    )
-    .run();
+    Fixture::new("6.10", 2, "Explicit !!int tag", "count: !!int 42\n").run();
 }
 
 #[test]
 fn ch_6_10_03_float_tag() {
-    Fixture::new(
-        "6.10",
-        3,
-        "Explicit !!float tag",
-        "value: !!float 3.14\n",
-    )
-    .run();
+    Fixture::new("6.10", 3, "Explicit !!float tag", "value: !!float 3.14\n").run();
 }
 
 #[test]
 fn ch_6_10_04_bool_tag() {
-    Fixture::new(
-        "6.10",
-        4,
-        "Explicit !!bool tag",
-        "enabled: !!bool true\n",
-    )
-    .run();
+    Fixture::new("6.10", 4, "Explicit !!bool tag", "enabled: !!bool true\n").run();
 }
 
 #[test]
 fn ch_6_10_05_null_tag() {
-    Fixture::new(
-        "6.10",
-        5,
-        "Explicit !!null tag",
-        "empty: !!null null\n",
-    )
-    .run();
+    Fixture::new("6.10", 5, "Explicit !!null tag", "empty: !!null null\n").run();
 }
 
 #[test]
 fn ch_6_10_06_seq_tag() {
-    Fixture::new(
-        "6.10",
-        6,
-        "Explicit !!seq tag",
-        "items: !!seq [a, b, c]\n",
-    )
-    .run();
+    Fixture::new("6.10", 6, "Explicit !!seq tag", "items: !!seq [a, b, c]\n").run();
 }
 
 #[test]

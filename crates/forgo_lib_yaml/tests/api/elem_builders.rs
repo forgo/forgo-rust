@@ -99,8 +99,7 @@ fn test_with_comment_sets_trailing_comment() {
 
 #[test]
 fn test_with_comment_chainable() {
-    let elem = Elem::string("test")
-        .with_comment("comment");
+    let elem = Elem::string("test").with_comment("comment");
 
     assert_eq!(elem.node().as_str(), Some("test"));
     assert_eq!(elem.meta.trailing_comment, Some("comment".into()));
@@ -197,9 +196,7 @@ fn test_prefer_block_sets_flag() {
 
 #[test]
 fn test_prefer_block_chainable() {
-    let elem = Elem::seq()
-        .prefer_block()
-        .with_comment("block style");
+    let elem = Elem::seq().prefer_block().with_comment("block style");
 
     assert!(elem.meta.prefer_block);
     assert_eq!(elem.meta.trailing_comment, Some("block style".into()));
@@ -238,10 +235,7 @@ fn test_prefer_quoted_chainable() {
 #[test]
 fn test_full_chain_all_metadata() {
     let elem = Elem::string("important value")
-        .with_leading_comments(vec![
-            "This is important".into(),
-            "Handle with care".into(),
-        ])
+        .with_leading_comments(vec!["This is important".into(), "Handle with care".into()])
         .with_comment("inline note")
         .with_anchor("important_value")
         .prefer_quoted();
@@ -256,13 +250,9 @@ fn test_full_chain_all_metadata() {
 #[test]
 fn test_chain_order_independence() {
     // Different order should produce same result
-    let elem1 = Elem::number(42)
-        .with_anchor("num")
-        .with_comment("comment");
+    let elem1 = Elem::number(42).with_anchor("num").with_comment("comment");
 
-    let elem2 = Elem::number(42)
-        .with_comment("comment")
-        .with_anchor("num");
+    let elem2 = Elem::number(42).with_comment("comment").with_anchor("num");
 
     assert_eq!(elem1.meta.anchor, elem2.meta.anchor);
     assert_eq!(elem1.meta.trailing_comment, elem2.meta.trailing_comment);
@@ -322,9 +312,7 @@ fn test_constructors_produce_default_metadata() {
 
 #[test]
 fn test_metadata_preserved_after_chaining() {
-    let elem = Elem::number(100)
-        .with_comment("first")
-        .with_anchor("num");
+    let elem = Elem::number(100).with_comment("first").with_anchor("num");
 
     // Metadata should be preserved
     assert_eq!(elem.meta.trailing_comment, Some("first".into()));
@@ -352,9 +340,7 @@ fn test_with_anchor_empty_string() {
 
 #[test]
 fn test_multiple_flags_combined() {
-    let elem = Elem::string("test")
-        .prefer_block()
-        .prefer_quoted();
+    let elem = Elem::string("test").prefer_block().prefer_quoted();
 
     assert!(elem.meta.prefer_block);
     assert!(elem.meta.prefer_quoted);

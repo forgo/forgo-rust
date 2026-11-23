@@ -61,7 +61,10 @@ fn flow_mapping_with_url() {
 fn flow_mapping_with_various_urls() {
     let test_cases = vec![
         ("{url: http://example.org}", "http://example.org"),
-        ("{url: https://example.org:8080/path}", "https://example.org:8080/path"),
+        (
+            "{url: https://example.org:8080/path}",
+            "https://example.org:8080/path",
+        ),
         ("{url: ftp://files.example.com}", "ftp://files.example.com"),
         // Timestamps with colons
         ("{time: 2024-01-01T12:34:56}", "2024-01-01T12:34:56"),

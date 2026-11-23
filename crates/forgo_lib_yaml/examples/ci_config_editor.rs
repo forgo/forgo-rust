@@ -12,7 +12,7 @@
 //!
 //! Run this example with: `cargo run --example ci_config_editor`
 
-use forgo_lib_yaml::{parse, stringify, Elem, MapKey, Node};
+use forgo_lib_yaml::{Elem, MapKey, Node, parse, stringify};
 use std::io::{self, Write};
 
 fn main() {
@@ -173,8 +173,7 @@ fn upgrade_ubuntu_runners(doc: &mut forgo_lib_yaml::Doc) {
     doc.visit_values_mut(&["jobs", "*", "runs-on"], |elem| {
         if let Some(runner) = elem.node().as_str() {
             if runner.contains("ubuntu-20.04") {
-                *elem = Elem::string("ubuntu-22.04")
-                    .with_comment("Upgraded from 20.04");
+                *elem = Elem::string("ubuntu-22.04").with_comment("Upgraded from 20.04");
                 count += 1;
                 return true;
             }
@@ -183,7 +182,10 @@ fn upgrade_ubuntu_runners(doc: &mut forgo_lib_yaml::Doc) {
     });
 
     if count > 0 {
-        println!("✅ Successfully upgraded {} job runner(s) to Ubuntu 22.04", count);
+        println!(
+            "✅ Successfully upgraded {} job runner(s) to Ubuntu 22.04",
+            count
+        );
     } else {
         println!("ℹ️  No Ubuntu 20.04 runners found to upgrade");
     }
@@ -197,7 +199,8 @@ fn add_caching_to_jobs(doc: &mut forgo_lib_yaml::Doc) {
     doc.visit_sequences_mut(&["jobs", "*", "steps"], |steps| {
         // Check if caching already exists
         let has_cache = steps.iter().any(|step| {
-            step.node().as_map()
+            step.node()
+                .as_map()
                 .and_then(|m| m.iter().find(|(k, _)| k == "name"))
                 .and_then(|(_, v)| v.node().as_str())
                 .map(|s| s.contains("cache") || s.contains("Cache"))
@@ -207,14 +210,8 @@ fn add_caching_to_jobs(doc: &mut forgo_lib_yaml::Doc) {
         if !has_cache {
             // Build cache step
             let mut cache_step: Vec<(MapKey, Elem)> = vec![];
-            cache_step.push((
-                "name".into(),
-                Elem::string("Cache dependencies"),
-            ));
-            cache_step.push((
-                "uses".into(),
-                Elem::string("actions/cache@v3"),
-            ));
+            cache_step.push(("name".into(), Elem::string("Cache dependencies")));
+            cache_step.push(("uses".into(), Elem::string("actions/cache@v3")));
 
             let mut with_map: Vec<(MapKey, Elem)> = vec![];
             with_map.push((
@@ -226,16 +223,12 @@ fn add_caching_to_jobs(doc: &mut forgo_lib_yaml::Doc) {
                 Elem::string("${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"),
             ));
 
-            cache_step.push((
-                "with".into(),
-                Elem::new(Node::Map(with_map)),
-            ));
+            cache_step.push(("with".into(), Elem::new(Node::Map(with_map))));
 
             // Insert cache step after checkout (position 1)
             steps.insert(
                 1,
-                Elem::new(Node::Map(cache_step))
-                    .with_comment("Added by CI editor")
+                Elem::new(Node::Map(cache_step)).with_comment("Added by CI editor"),
             );
 
             count += 1;
@@ -269,14 +262,16 @@ fn update_rust_toolchain(doc: &mut forgo_lib_yaml::Doc) {
 
     let mut count = 0;
     doc.visit_values_mut(&["jobs", "*", "steps", "*", "with", "toolchain"], |elem| {
-        *elem = Elem::string(version)
-            .with_comment(&format!("Updated to {}", version));
+        *elem = Elem::string(version).with_comment(&format!("Updated to {}", version));
         count += 1;
         true
     });
 
     if count > 0 {
-        println!("✅ Updated Rust toolchain to '{}' in {} location(s)", version, count);
+        println!(
+            "✅ Updated Rust toolchain to '{}' in {} location(s)",
+            version, count
+        );
     } else {
         println!("ℹ️  No Rust toolchain configuration found");
     }
@@ -295,10 +290,7 @@ fn add_security_scan_job(doc: &mut forgo_lib_yaml::Doc) {
 
         // Build security scan job
         let mut security_job: Vec<(MapKey, Elem)> = vec![];
-        security_job.push((
-            "runs-on".into(),
-            Elem::string("ubuntu-22.04"),
-        ));
+        security_job.push(("runs-on".into(), Elem::string("ubuntu-22.04")));
 
         let steps = vec![
             {
@@ -310,29 +302,31 @@ fn add_security_scan_job(doc: &mut forgo_lib_yaml::Doc) {
             {
                 let mut step: Vec<(MapKey, Elem)> = vec![];
                 step.push(("name".into(), Elem::string("Run cargo audit")));
-                step.push(("run".into(), Elem::string("cargo install cargo-audit && cargo audit")));
+                step.push((
+                    "run".into(),
+                    Elem::string("cargo install cargo-audit && cargo audit"),
+                ));
                 Elem::new(Node::Map(step))
             },
             {
                 let mut step: Vec<(MapKey, Elem)> = vec![];
                 step.push(("name".into(), Elem::string("Run cargo deny")));
-                step.push(("run".into(), Elem::string("cargo install cargo-deny && cargo deny check")));
+                step.push((
+                    "run".into(),
+                    Elem::string("cargo install cargo-deny && cargo deny check"),
+                ));
                 Elem::new(Node::Map(step))
             },
         ];
 
-        security_job.push((
-            "steps".into(),
-            Elem::new(Node::Seq(steps)),
-        ));
+        security_job.push(("steps".into(), Elem::new(Node::Seq(steps))));
 
         jobs_map.push((
             "security-scan".into(),
-            Elem::new(Node::Map(security_job))
-                .with_leading_comments(vec![
-                    "Security scanning job".to_string(),
-                    "Added by CI editor".to_string(),
-                ])
+            Elem::new(Node::Map(security_job)).with_leading_comments(vec![
+                "Security scanning job".to_string(),
+                "Added by CI editor".to_string(),
+            ]),
         ));
 
         println!("✅ Added security-scan job successfully");
@@ -357,8 +351,7 @@ fn update_actions_versions(doc: &mut forgo_lib_yaml::Doc) {
         doc.visit_values_mut(&["jobs", "*", "steps", "*", "uses"], |elem| {
             if let Some(action) = elem.node().as_str() {
                 if action == old {
-                    *elem = Elem::string(new)
-                        .with_comment(&format!("Updated from {}", old));
+                    *elem = Elem::string(new).with_comment(&format!("Updated from {}", old));
                     count += 1;
                     return true;
                 }

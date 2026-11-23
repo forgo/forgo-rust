@@ -1,5 +1,5 @@
 //! Anchor and alias tests
 
-mod anchors;
 mod alias_anchor_weird;
+mod anchors;
 mod merge_keys;

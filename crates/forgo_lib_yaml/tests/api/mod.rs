@@ -100,9 +100,18 @@ mod tests {
 
     #[test]
     fn test_helpers_create_valid_elements() {
-        assert!(matches!(str_elem("test").node(), Node::Scalar(Scalar::Str(_))));
-        assert!(matches!(num_elem("42").node(), Node::Scalar(Scalar::Num { .. })));
-        assert!(matches!(bool_elem(true).node(), Node::Scalar(Scalar::Bool(true))));
+        assert!(matches!(
+            str_elem("test").node(),
+            Node::Scalar(Scalar::Str(_))
+        ));
+        assert!(matches!(
+            num_elem("42").node(),
+            Node::Scalar(Scalar::Num { .. })
+        ));
+        assert!(matches!(
+            bool_elem(true).node(),
+            Node::Scalar(Scalar::Bool(true))
+        ));
         assert!(matches!(null_elem().node(), Node::Scalar(Scalar::Null)));
         assert!(matches!(map_elem().node(), Node::Map(_)));
         assert!(matches!(seq_elem().node(), Node::Seq(_)));

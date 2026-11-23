@@ -84,7 +84,9 @@ fn test_as_map_returns_none_for_non_map() {
 #[test]
 fn test_as_map_mut_returns_mutable_reference() {
     let mut node = Node::Map(vec![]);
-    node.as_map_mut().unwrap().push(("key".into(), str_elem("value")));
+    node.as_map_mut()
+        .unwrap()
+        .push(("key".into(), str_elem("value")));
     assert_eq!(node.as_map().unwrap().len(), 1);
 }
 
@@ -170,13 +172,17 @@ fn test_as_i64_parses_integer() {
 
 #[test]
 fn test_as_i64_parses_negative_integer() {
-    let node = Node::Scalar(Scalar::Num { text: "-123".into() });
+    let node = Node::Scalar(Scalar::Num {
+        text: "-123".into(),
+    });
     assert_eq!(node.as_i64(), Some(-123));
 }
 
 #[test]
 fn test_as_i64_returns_none_for_invalid_number() {
-    let node = Node::Scalar(Scalar::Num { text: "not_a_number".into() });
+    let node = Node::Scalar(Scalar::Num {
+        text: "not_a_number".into(),
+    });
     assert!(node.as_i64().is_none());
 }
 
@@ -188,7 +194,9 @@ fn test_as_i64_returns_none_for_non_number() {
 
 #[test]
 fn test_as_f64_parses_float() {
-    let node = Node::Scalar(Scalar::Num { text: "3.14".into() });
+    let node = Node::Scalar(Scalar::Num {
+        text: "3.14".into(),
+    });
     assert_eq!(node.as_f64(), Some(3.14));
 }
 
@@ -200,7 +208,9 @@ fn test_as_f64_parses_integer_as_float() {
 
 #[test]
 fn test_as_f64_returns_none_for_invalid_number() {
-    let node = Node::Scalar(Scalar::Num { text: "not_a_number".into() });
+    let node = Node::Scalar(Scalar::Num {
+        text: "not_a_number".into(),
+    });
     assert!(node.as_f64().is_none());
 }
 

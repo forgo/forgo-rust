@@ -147,24 +147,12 @@ fn ch_10_2_04_json_integer() {
 
 #[test]
 fn ch_10_2_05_json_negative_integer() {
-    Fixture::new(
-        "10.2",
-        5,
-        "JSON: negative integer",
-        "temp: -42\n",
-    )
-    .run();
+    Fixture::new("10.2", 5, "JSON: negative integer", "temp: -42\n").run();
 }
 
 #[test]
 fn ch_10_2_06_json_float() {
-    Fixture::new(
-        "10.2",
-        6,
-        "JSON: floating point",
-        "pi: 3.14159\n",
-    )
-    .run();
+    Fixture::new("10.2", 6, "JSON: floating point", "pi: 3.14159\n").run();
 }
 
 #[test]
@@ -180,13 +168,7 @@ fn ch_10_2_07_json_exponential() {
 
 #[test]
 fn ch_10_2_08_json_string() {
-    Fixture::new(
-        "10.2",
-        8,
-        "JSON: string value",
-        "name: hello\n",
-    )
-    .run();
+    Fixture::new("10.2", 8, "JSON: string value", "name: hello\n").run();
 }
 
 #[test]
@@ -449,13 +431,7 @@ fn ch_10_3_1_04_core_bool_on_off_lowercase() {
 #[test]
 fn ch_10_3_1_05_core_bool_y_n() {
     // Core: Y/N as boolean
-    Fixture::new(
-        "10.3.1",
-        5,
-        "Core boolean: Y/N",
-        "answer: Y\nquestion: N\n",
-    )
-    .run();
+    Fixture::new("10.3.1", 5, "Core boolean: Y/N", "answer: Y\nquestion: N\n").run();
 }
 
 #[test]
@@ -501,13 +477,7 @@ fn ch_10_3_1_08_core_bool_false_variations() {
 #[test]
 fn ch_10_3_2_01_core_null_lowercase() {
     // Core: null (lowercase)
-    Fixture::new(
-        "10.3.2",
-        1,
-        "Core null: null (lowercase)",
-        "value: null\n",
-    )
-    .run();
+    Fixture::new("10.3.2", 1, "Core null: null (lowercase)", "value: null\n").run();
 }
 
 #[test]
@@ -525,25 +495,13 @@ fn ch_10_3_2_02_core_null_capitalized() {
 #[test]
 fn ch_10_3_2_03_core_null_uppercase() {
     // Core: NULL (uppercase)
-    Fixture::new(
-        "10.3.2",
-        3,
-        "Core null: NULL (uppercase)",
-        "value: NULL\n",
-    )
-    .run();
+    Fixture::new("10.3.2", 3, "Core null: NULL (uppercase)", "value: NULL\n").run();
 }
 
 #[test]
 fn ch_10_3_2_04_core_null_tilde() {
     // Core: ~ (tilde) as null
-    Fixture::new(
-        "10.3.2",
-        4,
-        "Core null: ~ (tilde)",
-        "value: ~\n",
-    )
-    .run();
+    Fixture::new("10.3.2", 4, "Core null: ~ (tilde)", "value: ~\n").run();
 }
 
 #[test]
@@ -565,25 +523,13 @@ fn ch_10_3_2_05_core_null_empty_value() {
 #[test]
 fn ch_10_3_3_01_core_int_binary() {
     // Core: binary notation (0b)
-    Fixture::new(
-        "10.3.3",
-        1,
-        "Core integer: binary (0b)",
-        "binary: 0b1010\n",
-    )
-    .run();
+    Fixture::new("10.3.3", 1, "Core integer: binary (0b)", "binary: 0b1010\n").run();
 }
 
 #[test]
 fn ch_10_3_3_02_core_int_octal() {
     // Core: octal notation (0o)
-    Fixture::new(
-        "10.3.3",
-        2,
-        "Core integer: octal (0o)",
-        "octal: 0o52\n",
-    )
-    .run();
+    Fixture::new("10.3.3", 2, "Core integer: octal (0o)", "octal: 0o52\n").run();
 }
 
 #[test]
@@ -923,13 +869,7 @@ fn ch_10_4_03_quoted_forces_string() {
 
 #[test]
 fn ch_10_4_04_bool_detection() {
-    Fixture::new(
-        "10.4",
-        4,
-        "Type resolution: boolean",
-        "enabled: true\n",
-    )
-    .run();
+    Fixture::new("10.4", 4, "Type resolution: boolean", "enabled: true\n").run();
 }
 
 #[test]
@@ -946,24 +886,12 @@ fn ch_10_4_05_quoted_bool_is_string() {
 
 #[test]
 fn ch_10_4_06_null_detection() {
-    Fixture::new(
-        "10.4",
-        6,
-        "Type resolution: null",
-        "value: null\n",
-    )
-    .run();
+    Fixture::new("10.4", 6, "Type resolution: null", "value: null\n").run();
 }
 
 #[test]
 fn ch_10_4_07_tilde_as_null() {
-    Fixture::new(
-        "10.4",
-        7,
-        "Type resolution: tilde as null",
-        "value: ~\n",
-    )
-    .run();
+    Fixture::new("10.4", 7, "Type resolution: tilde as null", "value: ~\n").run();
 }
 
 // ============================================================================
@@ -972,35 +900,17 @@ fn ch_10_4_07_tilde_as_null() {
 
 #[test]
 fn ch_10_5_01_integer_zero() {
-    Fixture::new(
-        "10.5",
-        1,
-        "Number: integer zero",
-        "zero: 0\n",
-    )
-    .run();
+    Fixture::new("10.5", 1, "Number: integer zero", "zero: 0\n").run();
 }
 
 #[test]
 fn ch_10_5_02_negative_zero() {
-    Fixture::new(
-        "10.5",
-        2,
-        "Number: negative zero",
-        "negzero: -0\n",
-    )
-    .run();
+    Fixture::new("10.5", 2, "Number: negative zero", "negzero: -0\n").run();
 }
 
 #[test]
 fn ch_10_5_03_float_zero() {
-    Fixture::new(
-        "10.5",
-        3,
-        "Number: float zero",
-        "fzero: 0.0\n",
-    )
-    .run();
+    Fixture::new("10.5", 3, "Number: float zero", "fzero: 0.0\n").run();
 }
 
 #[test]
@@ -1053,13 +963,7 @@ fn ch_10_5_07_exponential_negative() {
 
 #[test]
 fn ch_10_6_01_url_is_string() {
-    Fixture::new(
-        "10.6",
-        1,
-        "String: URL",
-        "url: https://example.com\n",
-    )
-    .run();
+    Fixture::new("10.6", 1, "String: URL", "url: https://example.com\n").run();
 }
 
 #[test]
@@ -1075,22 +979,10 @@ fn ch_10_6_02_email_is_string() {
 
 #[test]
 fn ch_10_6_03_version_string() {
-    Fixture::new(
-        "10.6",
-        3,
-        "String: version number",
-        "version: 1.0\n",
-    )
-    .run();
+    Fixture::new("10.6", 3, "String: version number", "version: 1.0\n").run();
 }
 
 #[test]
 fn ch_10_6_04_quoted_number() {
-    Fixture::new(
-        "10.6",
-        4,
-        "String: quoted number",
-        "code: \"007\"\n",
-    )
-    .run();
+    Fixture::new("10.6", 4, "String: quoted number", "code: \"007\"\n").run();
 }

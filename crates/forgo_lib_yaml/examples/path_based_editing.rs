@@ -11,7 +11,7 @@
 //!
 //! Run this example with: `cargo run --example path_based_editing`
 
-use forgo_lib_yaml::{parse, stringify, Elem};
+use forgo_lib_yaml::{Elem, parse, stringify};
 
 fn main() {
     println!("=== Path-Based Document Editing ===\n");
@@ -100,10 +100,7 @@ server:
             "workers".into(),
             Elem::number(4).with_comment("Worker threads"),
         ));
-        map.push((
-            "timeout".into(),
-            Elem::number(30),
-        ));
+        map.push(("timeout".into(), Elem::number(30)));
         true
     });
 
@@ -145,7 +142,10 @@ jobs:
         true
     });
 
-    println!("Updated {} job runners to ubuntu-22.04", if count { "all" } else { "no" });
+    println!(
+        "Updated {} job runners to ubuntu-22.04",
+        if count { "all" } else { "no" }
+    );
 
     // Add a cleanup step to all jobs using wildcard
     doc.visit_sequences_mut(&["jobs", "*", "steps"], |steps| {
@@ -282,17 +282,18 @@ environments:
     // Scale up all non-development environments
     doc.visit_maps_mut(&["environments", "*"], |env_map| {
         // Check if this is not development
-        let is_dev = env_map.iter()
+        let is_dev = env_map
+            .iter()
             .filter(|(_, elem)| elem.node().as_i64() == Some(1))
-            .count() > 0;
+            .count()
+            > 0;
 
         if !is_dev {
             // Find and update replicas
             for (key, value) in env_map.iter_mut() {
                 if key == "replicas" {
                     if let Some(current) = value.node().as_i64() {
-                        *value = Elem::number(current * 2)
-                            .with_comment("Scaled up 2x");
+                        *value = Elem::number(current * 2).with_comment("Scaled up 2x");
                     }
                 }
             }

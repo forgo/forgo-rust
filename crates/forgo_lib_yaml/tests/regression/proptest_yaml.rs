@@ -83,17 +83,44 @@ fn normalize_yaml(s: &str) -> String {
 fn gen_scalar(rng: &mut Rng) -> String {
     let scalar_types = [
         // Plain strings
-        "foo", "bar", "baz", "hello", "world", "test", "value", "key",
+        "foo",
+        "bar",
+        "baz",
+        "hello",
+        "world",
+        "test",
+        "value",
+        "key",
         // Numbers
-        "0", "1", "42", "-1", "3.14", "-99.99", "1e10", "0.0",
+        "0",
+        "1",
+        "42",
+        "-1",
+        "3.14",
+        "-99.99",
+        "1e10",
+        "0.0",
         // Booleans
-        "true", "false", "yes", "no", "on", "off",
+        "true",
+        "false",
+        "yes",
+        "no",
+        "on",
+        "off",
         // Null
-        "null", "~",
+        "null",
+        "~",
         // Strings with special chars (that need quoting)
-        "hello world", "foo: bar", "- item", "[1, 2]", "{a: b}",
+        "hello world",
+        "foo: bar",
+        "- item",
+        "[1, 2]",
+        "{a: b}",
         // URLs and identifiers
-        "http://example.com", "user@example.com", "v1.2.3", "some-id",
+        "http://example.com",
+        "user@example.com",
+        "v1.2.3",
+        "some-id",
     ];
 
     rng.pick_str(&scalar_types).to_string()
@@ -102,14 +129,9 @@ fn gen_scalar(rng: &mut Rng) -> String {
 /// Generate random mapping key
 fn gen_key(rng: &mut Rng) -> String {
     let keys = [
-        "a", "b", "c", "x", "y", "z",
-        "name", "value", "id", "type", "key",
-        "foo", "bar", "baz", "qux",
-        "alpha", "beta", "gamma", "delta",
-        "first", "second", "third",
-        "item", "element", "node",
-        "project", "config", "setting",
-        "jobs", "steps", "matrix",
+        "a", "b", "c", "x", "y", "z", "name", "value", "id", "type", "key", "foo", "bar", "baz",
+        "qux", "alpha", "beta", "gamma", "delta", "first", "second", "third", "item", "element",
+        "node", "project", "config", "setting", "jobs", "steps", "matrix",
     ];
 
     rng.pick_str(&keys).to_string()
@@ -150,14 +172,24 @@ fn gen_yaml_sequence(rng: &mut Rng, max_depth: u32, max_width: u32, current_dept
             if i > 0 {
                 result.push_str(", ");
             }
-            result.push_str(&gen_yaml_value(rng, max_depth - 1, max_width, current_depth + 1));
+            result.push_str(&gen_yaml_value(
+                rng,
+                max_depth - 1,
+                max_width,
+                current_depth + 1,
+            ));
         }
         result.push(']');
     } else {
         // Block style
         for _ in 0..count {
             result.push_str("- ");
-            result.push_str(&gen_yaml_value(rng, max_depth - 1, max_width, current_depth + 1));
+            result.push_str(&gen_yaml_value(
+                rng,
+                max_depth - 1,
+                max_width,
+                current_depth + 1,
+            ));
             result.push('\n');
         }
     }
@@ -191,7 +223,12 @@ fn gen_yaml_mapping(rng: &mut Rng, max_depth: u32, max_width: u32, current_depth
 
             result.push_str(&key);
             result.push_str(": ");
-            result.push_str(&gen_yaml_value(rng, max_depth - 1, max_width, current_depth + 1));
+            result.push_str(&gen_yaml_value(
+                rng,
+                max_depth - 1,
+                max_width,
+                current_depth + 1,
+            ));
         }
         result.push('}');
     } else {
@@ -206,7 +243,12 @@ fn gen_yaml_mapping(rng: &mut Rng, max_depth: u32, max_width: u32, current_depth
 
             result.push_str(&key);
             result.push_str(": ");
-            result.push_str(&gen_yaml_value(rng, max_depth - 1, max_width, current_depth + 1));
+            result.push_str(&gen_yaml_value(
+                rng,
+                max_depth - 1,
+                max_width,
+                current_depth + 1,
+            ));
             result.push('\n');
         }
     }
@@ -556,7 +598,13 @@ fn prop_structure_preservation() {
             .map(|_| gen_scalar(&mut rng))
             .collect();
 
-        let yaml = format!("items:\n{}", items.iter().map(|s| format!("  - {s}\n")).collect::<String>());
+        let yaml = format!(
+            "items:\n{}",
+            items
+                .iter()
+                .map(|s| format!("  - {s}\n"))
+                .collect::<String>()
+        );
 
         let doc = Doc::from_str(&yaml).expect("should parse sequence");
         let emitted = doc.to_string().expect("should emit");

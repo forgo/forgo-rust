@@ -7,7 +7,7 @@
 //! - parse_all() - parse multiple documents
 
 use crate::api::*;
-use forgo_lib_yaml::{parse, parse_all, stringify, Elem};
+use forgo_lib_yaml::{Elem, parse, parse_all, stringify};
 
 // ============================================================================
 // parse() Tests

@@ -90,7 +90,9 @@ fn test_as_i64_parses_positive_integer() {
 
 #[test]
 fn test_as_i64_parses_negative_integer() {
-    let scalar = Scalar::Num { text: "-123".into() };
+    let scalar = Scalar::Num {
+        text: "-123".into(),
+    };
     assert_eq!(scalar.as_i64(), Some(-123));
 }
 
@@ -102,13 +104,17 @@ fn test_as_i64_parses_zero() {
 
 #[test]
 fn test_as_i64_returns_none_for_invalid() {
-    let scalar = Scalar::Num { text: "not_a_number".into() };
+    let scalar = Scalar::Num {
+        text: "not_a_number".into(),
+    };
     assert!(scalar.as_i64().is_none());
 }
 
 #[test]
 fn test_as_i64_returns_none_for_float() {
-    let scalar = Scalar::Num { text: "3.14".into() };
+    let scalar = Scalar::Num {
+        text: "3.14".into(),
+    };
     assert!(scalar.as_i64().is_none());
 }
 
@@ -119,7 +125,9 @@ fn test_as_i64_returns_none_for_non_number() {
 
 #[test]
 fn test_as_f64_parses_float() {
-    let scalar = Scalar::Num { text: "3.14".into() };
+    let scalar = Scalar::Num {
+        text: "3.14".into(),
+    };
     assert_eq!(scalar.as_f64(), Some(3.14));
 }
 
@@ -131,19 +139,25 @@ fn test_as_f64_parses_integer_as_float() {
 
 #[test]
 fn test_as_f64_parses_negative_float() {
-    let scalar = Scalar::Num { text: "-2.5".into() };
+    let scalar = Scalar::Num {
+        text: "-2.5".into(),
+    };
     assert_eq!(scalar.as_f64(), Some(-2.5));
 }
 
 #[test]
 fn test_as_f64_parses_scientific_notation() {
-    let scalar = Scalar::Num { text: "1.5e2".into() };
+    let scalar = Scalar::Num {
+        text: "1.5e2".into(),
+    };
     assert_eq!(scalar.as_f64(), Some(150.0));
 }
 
 #[test]
 fn test_as_f64_returns_none_for_invalid() {
-    let scalar = Scalar::Num { text: "not_a_number".into() };
+    let scalar = Scalar::Num {
+        text: "not_a_number".into(),
+    };
     assert!(scalar.as_f64().is_none());
 }
 
@@ -161,7 +175,9 @@ fn test_as_u64_returns_none_for_negative() {
 
 #[test]
 fn test_as_u64_parses_large_number() {
-    let scalar = Scalar::Num { text: "18446744073709551615".into() }; // u64::MAX
+    let scalar = Scalar::Num {
+        text: "18446744073709551615".into(),
+    }; // u64::MAX
     assert_eq!(scalar.as_u64(), Some(u64::MAX));
 }
 
@@ -177,7 +193,9 @@ fn test_num_text_returns_original_text() {
 
 #[test]
 fn test_num_text_preserves_formatting() {
-    let scalar = Scalar::Num { text: "1_000_000".into() };
+    let scalar = Scalar::Num {
+        text: "1_000_000".into(),
+    };
     assert_eq!(scalar.num_text(), Some("1_000_000"));
 }
 
@@ -224,6 +242,8 @@ fn test_to_string_for_null() {
 
 #[test]
 fn test_to_string_preserves_number_formatting() {
-    let scalar = Scalar::Num { text: "3.14159".into() };
+    let scalar = Scalar::Num {
+        text: "3.14159".into(),
+    };
     assert_eq!(scalar.to_string(), "3.14159");
 }

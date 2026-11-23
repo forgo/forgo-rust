@@ -146,14 +146,27 @@ top2:
     };
 
     // Check top1 contains the anchor
-    let (_, top1) = root.iter().find(|(k, _)| k == "top1").expect("top1 missing");
+    let (_, top1) = root
+        .iter()
+        .find(|(k, _)| k == "top1")
+        .expect("top1 missing");
     let Node::Map(top1_map) = top1.node() else {
         panic!("top1 not a map");
     };
-    let (_, key1_val) = top1_map.iter().find(|(k, _)| k == "key1").expect("key1 missing");
-    assert_eq!(key1_val.meta.anchor.as_deref(), Some("alias1"), "anchor not attached");
+    let (_, key1_val) = top1_map
+        .iter()
+        .find(|(k, _)| k == "key1")
+        .expect("key1 missing");
+    assert_eq!(
+        key1_val.meta.anchor.as_deref(),
+        Some("alias1"),
+        "anchor not attached"
+    );
 
     // Check top2 exists - it should parse successfully with alias as key
-    let (_k, _v) = root.iter().find(|(k, _)| k == "top2").expect("top2 missing");
+    let (_k, _v) = root
+        .iter()
+        .find(|(k, _)| k == "top2")
+        .expect("top2 missing");
     // The fact that it parsed is the main test - aliases as keys are now allowed
 }

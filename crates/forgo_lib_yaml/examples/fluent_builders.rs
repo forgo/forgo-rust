@@ -10,7 +10,7 @@
 //!
 //! Run this example with: `cargo run --example fluent_builders`
 
-use forgo_lib_yaml::{parse, stringify, Elem, MapKey, Node};
+use forgo_lib_yaml::{Elem, MapKey, Node, parse, stringify};
 
 fn main() {
     println!("=== Building YAML Documents with Fluent Builders ===\n");
@@ -39,8 +39,8 @@ fn main() {
     println!("2. Fluent Builders for Metadata\n");
 
     // The fluent API allows chaining methods to add metadata
-    let _documented_name = Elem::string("production-server")
-        .with_comment("Primary production server");
+    let _documented_name =
+        Elem::string("production-server").with_comment("Primary production server");
 
     let _versioned_config = Elem::number("3.0.0")
         .with_leading_comments(vec![
@@ -55,11 +55,11 @@ fn main() {
         .with_comment("Base configuration template");
 
     // Styling preferences guide the serializer
-    let _multiline_text = Elem::string("This is a long text\nthat spans multiple lines\nand should use block style")
-        .prefer_block(); // Hint: use | or > block scalar
+    let _multiline_text =
+        Elem::string("This is a long text\nthat spans multiple lines\nand should use block style")
+            .prefer_block(); // Hint: use | or > block scalar
 
-    let _quoted_string = Elem::string("needs-quotes: true")
-        .prefer_quoted(); // Hint: use "..." quoting
+    let _quoted_string = Elem::string("needs-quotes: true").prefer_quoted(); // Hint: use "..." quoting
 
     println!("✓ Created elements with comments, anchors, and style hints\n");
 
@@ -72,36 +72,26 @@ fn main() {
     // Add application metadata
     server_config.push((
         MapKey::from_str("name"),
-        Elem::string("web-api")
-            .with_comment("Application identifier"),
+        Elem::string("web-api").with_comment("Application identifier"),
     ));
 
     server_config.push((
         MapKey::from_str("version"),
-        Elem::string("1.0.0")
-            .with_comment("Semantic version"),
+        Elem::string("1.0.0").with_comment("Semantic version"),
     ));
 
     server_config.push((
         MapKey::from_str("environment"),
-        Elem::string("production")
-            .with_comment("deployment environment"),
+        Elem::string("production").with_comment("deployment environment"),
     ));
 
     // Build server settings sub-map
     let mut server_settings: Vec<(MapKey, Elem)> = vec![];
-    server_settings.push((
-        MapKey::from_str("host"),
-        Elem::string("0.0.0.0"),
-    ));
-    server_settings.push((
-        MapKey::from_str("port"),
-        Elem::number(8080),
-    ));
+    server_settings.push((MapKey::from_str("host"), Elem::string("0.0.0.0")));
+    server_settings.push((MapKey::from_str("port"), Elem::number(8080)));
     server_settings.push((
         MapKey::from_str("workers"),
-        Elem::number(4)
-            .with_comment("Number of worker threads"),
+        Elem::number(4).with_comment("Number of worker threads"),
     ));
 
     server_config.push((
@@ -115,39 +105,24 @@ fn main() {
     let features = vec![
         Elem::string("authentication"),
         Elem::string("rate-limiting"),
-        Elem::string("caching")
-            .with_comment("Redis-backed cache"),
+        Elem::string("caching").with_comment("Redis-backed cache"),
         Elem::string("logging"),
     ];
 
     server_config.push((
         MapKey::from_str("features"),
-        Elem::new(Node::Seq(features))
-            .with_leading_comments(vec!["Enabled features".to_string()]),
+        Elem::new(Node::Seq(features)).with_leading_comments(vec!["Enabled features".to_string()]),
     ));
 
     // Build database configuration
     let mut db_config: Vec<(MapKey, Elem)> = vec![];
-    db_config.push((
-        MapKey::from_str("driver"),
-        Elem::string("postgresql"),
-    ));
-    db_config.push((
-        MapKey::from_str("host"),
-        Elem::string("localhost"),
-    ));
-    db_config.push((
-        MapKey::from_str("port"),
-        Elem::number(5432),
-    ));
-    db_config.push((
-        MapKey::from_str("database"),
-        Elem::string("production_db"),
-    ));
+    db_config.push((MapKey::from_str("driver"), Elem::string("postgresql")));
+    db_config.push((MapKey::from_str("host"), Elem::string("localhost")));
+    db_config.push((MapKey::from_str("port"), Elem::number(5432)));
+    db_config.push((MapKey::from_str("database"), Elem::string("production_db")));
     db_config.push((
         MapKey::from_str("pool_size"),
-        Elem::number(10)
-            .with_comment("Connection pool size"),
+        Elem::number(10).with_comment("Connection pool size"),
     ));
 
     server_config.push((
@@ -162,17 +137,16 @@ fn main() {
     ));
 
     // Create the root element and build a temporary YAML to parse into a Doc
-    let root_elem = Elem::new(Node::Map(server_config))
-        .with_leading_comments(vec![
-            "Web API Server Configuration".to_string(),
-            "Generated by forgo_lib_yaml fluent builders".to_string(),
-            "".to_string(),
-            "This configuration demonstrates:".to_string(),
-            "- Fluent builder API for creating elements".to_string(),
-            "- Adding inline and leading comments".to_string(),
-            "- Using anchors for referencing".to_string(),
-            "- Style preferences for serialization".to_string(),
-        ]);
+    let root_elem = Elem::new(Node::Map(server_config)).with_leading_comments(vec![
+        "Web API Server Configuration".to_string(),
+        "Generated by forgo_lib_yaml fluent builders".to_string(),
+        "".to_string(),
+        "This configuration demonstrates:".to_string(),
+        "- Fluent builder API for creating elements".to_string(),
+        "- Adding inline and leading comments".to_string(),
+        "- Using anchors for referencing".to_string(),
+        "- Style preferences for serialization".to_string(),
+    ]);
 
     // For demonstration, we'll create a minimal doc and replace its root
     // In a real application, you'd typically use parse() then modify
@@ -226,22 +200,18 @@ fn main() {
     let build_steps = vec![
         Elem::string("checkout code"),
         Elem::string("setup rust"),
-        Elem::string("cargo build --release")
-            .with_comment("Build in release mode"),
-        Elem::string("cargo test")
-            .with_comment("Run test suite"),
+        Elem::string("cargo build --release").with_comment("Build in release mode"),
+        Elem::string("cargo test").with_comment("Run test suite"),
     ];
 
     build_job.push((
         "steps".into(),
-        Elem::new(Node::Seq(build_steps))
-            .with_comment("Build steps"),
+        Elem::new(Node::Seq(build_steps)).with_comment("Build steps"),
     ));
 
     jobs.push((
         "build".into(),
-        Elem::new(Node::Map(build_job))
-            .with_comment("Build and test job"),
+        Elem::new(Node::Map(build_job)).with_comment("Build and test job"),
     ));
 
     // Deploy job
@@ -258,21 +228,16 @@ fn main() {
         Elem::string("deploy to production"),
     ];
 
-    deploy_job.push((
-        "steps".into(),
-        Elem::new(Node::Seq(deploy_steps)),
-    ));
+    deploy_job.push(("steps".into(), Elem::new(Node::Seq(deploy_steps))));
 
     jobs.push((
         "deploy".into(),
-        Elem::new(Node::Map(deploy_job))
-            .with_comment("Deployment job"),
+        Elem::new(Node::Map(deploy_job)).with_comment("Deployment job"),
     ));
 
     ci_config.push((
         "jobs".into(),
-        Elem::new(Node::Map(jobs))
-            .with_leading_comments(vec!["CI/CD Jobs".to_string()]),
+        Elem::new(Node::Map(jobs)).with_leading_comments(vec!["CI/CD Jobs".to_string()]),
     ));
 
     let ci_root = Elem::new(Node::Map(ci_config))

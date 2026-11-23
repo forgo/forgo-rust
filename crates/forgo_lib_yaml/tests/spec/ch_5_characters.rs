@@ -48,37 +48,19 @@ fn ch_5_1_02_unicode_characters() {
 #[test]
 fn ch_5_1_03_tab_allowed() {
     // Tab (x09) is allowed
-    Fixture::new(
-        "5.1",
-        3,
-        "Tab character is allowed",
-        "key:\tvalue\n",
-    )
-    .run();
+    Fixture::new("5.1", 3, "Tab character is allowed", "key:\tvalue\n").run();
 }
 
 #[test]
 fn ch_5_1_04_line_feed_allowed() {
     // Line feed (x0A) is allowed
-    Fixture::new(
-        "5.1",
-        4,
-        "Line feed is allowed",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("5.1", 4, "Line feed is allowed", "key: value\n").run();
 }
 
 #[test]
 fn ch_5_1_05_carriage_return_allowed() {
     // Carriage return (x0D) is allowed
-    Fixture::new(
-        "5.1",
-        5,
-        "Carriage return is allowed",
-        "key: value\r\n",
-    )
-    .run();
+    Fixture::new("5.1", 5, "Carriage return is allowed", "key: value\r\n").run();
 }
 
 // ============================================================================
@@ -87,25 +69,13 @@ fn ch_5_1_05_carriage_return_allowed() {
 
 #[test]
 fn ch_5_2_01_utf8_encoding() {
-    Fixture::new(
-        "5.2",
-        1,
-        "UTF-8 encoding support",
-        "utf8: Hello 世界\n",
-    )
-    .run();
+    Fixture::new("5.2", 1, "UTF-8 encoding support", "utf8: Hello 世界\n").run();
 }
 
 #[test]
 fn ch_5_2_02_ascii_start() {
     // Stream must begin with ASCII character for encoding detection
-    Fixture::new(
-        "5.2",
-        2,
-        "Stream starts with ASCII character",
-        "key: 値\n",
-    )
-    .run();
+    Fixture::new("5.2", 2, "Stream starts with ASCII character", "key: 値\n").run();
 }
 
 // ============================================================================
@@ -114,79 +84,37 @@ fn ch_5_2_02_ascii_start() {
 
 #[test]
 fn ch_5_3_01_sequence_indicator() {
-    Fixture::new(
-        "5.3",
-        1,
-        "Sequence indicator '-'",
-        "- item1\n- item2\n",
-    )
-    .run();
+    Fixture::new("5.3", 1, "Sequence indicator '-'", "- item1\n- item2\n").run();
 }
 
 #[test]
 fn ch_5_3_02_mapping_key_indicator() {
-    Fixture::new(
-        "5.3",
-        2,
-        "Mapping key indicator '?'",
-        "? key\n: value\n",
-    )
-    .run();
+    Fixture::new("5.3", 2, "Mapping key indicator '?'", "? key\n: value\n").run();
 }
 
 #[test]
 fn ch_5_3_03_mapping_value_indicator() {
-    Fixture::new(
-        "5.3",
-        3,
-        "Mapping value indicator ':'",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("5.3", 3, "Mapping value indicator ':'", "key: value\n").run();
 }
 
 #[test]
 fn ch_5_3_04_collection_entry_indicator() {
-    Fixture::new(
-        "5.3",
-        4,
-        "Collection entry indicator ','",
-        "[a, b, c]\n",
-    )
-    .run();
+    Fixture::new("5.3", 4, "Collection entry indicator ','", "[a, b, c]\n").run();
 }
 
 #[test]
 fn ch_5_3_05_flow_sequence_indicators() {
-    Fixture::new(
-        "5.3",
-        5,
-        "Flow sequence indicators '[]'",
-        "[1, 2, 3]\n",
-    )
-    .run();
+    Fixture::new("5.3", 5, "Flow sequence indicators '[]'", "[1, 2, 3]\n").run();
 }
 
 #[test]
 fn ch_5_3_06_flow_mapping_indicators() {
-    Fixture::new(
-        "5.3",
-        6,
-        "Flow mapping indicators '{}'",
-        "{key: value}\n",
-    )
-    .run();
+    Fixture::new("5.3", 6, "Flow mapping indicators '{}'", "{key: value}\n").run();
 }
 
 #[test]
 fn ch_5_3_07_comment_indicator() {
-    Fixture::new(
-        "5.3",
-        7,
-        "Comment indicator '#'",
-        "# comment\nkey: value\n",
-    )
-    .run();
+    Fixture::new("5.3", 7, "Comment indicator '#'", "# comment\nkey: value\n").run();
 }
 
 #[test]
@@ -213,13 +141,7 @@ fn ch_5_3_09_alias_indicator() {
 
 #[test]
 fn ch_5_3_10_tag_indicator() {
-    Fixture::new(
-        "5.3",
-        10,
-        "Tag indicator '!'",
-        "tag: !!str string\n",
-    )
-    .run();
+    Fixture::new("5.3", 10, "Tag indicator '!'", "tag: !!str string\n").run();
 }
 
 #[test]
@@ -283,13 +205,7 @@ fn ch_5_3_15_double_quote_indicator() {
 
 #[test]
 fn ch_5_4_01_line_feed() {
-    Fixture::new(
-        "5.4",
-        1,
-        "Line feed (LF) as line break",
-        "line1\nline2\n",
-    )
-    .run();
+    Fixture::new("5.4", 1, "Line feed (LF) as line break", "line1\nline2\n").run();
 }
 
 #[test]
@@ -341,13 +257,7 @@ fn ch_5_5_01_space_character() {
 
 #[test]
 fn ch_5_5_02_tab_character() {
-    Fixture::new(
-        "5.5",
-        2,
-        "Tab (x09) as white space",
-        "key:\tvalue\n",
-    )
-    .run();
+    Fixture::new("5.5", 2, "Tab (x09) as white space", "key:\tvalue\n").run();
 }
 
 #[test]
@@ -378,35 +288,17 @@ fn ch_5_5_04_leading_trailing_spaces() {
 
 #[test]
 fn ch_5_6_01_decimal_digits() {
-    Fixture::new(
-        "5.6",
-        1,
-        "Decimal digits (0-9)",
-        "number: 1234567890\n",
-    )
-    .run();
+    Fixture::new("5.6", 1, "Decimal digits (0-9)", "number: 1234567890\n").run();
 }
 
 #[test]
 fn ch_5_6_02_hexadecimal_digits() {
-    Fixture::new(
-        "5.6",
-        2,
-        "Hexadecimal number",
-        "hex: 0x1A2B3C\n",
-    )
-    .run();
+    Fixture::new("5.6", 2, "Hexadecimal number", "hex: 0x1A2B3C\n").run();
 }
 
 #[test]
 fn ch_5_6_03_ascii_letters() {
-    Fixture::new(
-        "5.6",
-        3,
-        "ASCII letters (a-z, A-Z)",
-        "text: abcXYZ\n",
-    )
-    .run();
+    Fixture::new("5.6", 3, "ASCII letters (a-z, A-Z)", "text: abcXYZ\n").run();
 }
 
 #[test]
@@ -437,24 +329,12 @@ fn ch_5_6_05_uri_characters() {
 
 #[test]
 fn ch_5_7_01_escape_null() {
-    Fixture::new(
-        "5.7",
-        1,
-        "Escaped null character",
-        "null: \"\\0\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 1, "Escaped null character", "null: \"\\0\"\n").run();
 }
 
 #[test]
 fn ch_5_7_02_escape_bell() {
-    Fixture::new(
-        "5.7",
-        2,
-        "Escaped bell character",
-        "bell: \"\\a\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 2, "Escaped bell character", "bell: \"\\a\"\n").run();
 }
 
 #[test]
@@ -470,24 +350,12 @@ fn ch_5_7_03_escape_backspace() {
 
 #[test]
 fn ch_5_7_04_escape_tab() {
-    Fixture::new(
-        "5.7",
-        4,
-        "Escaped tab character",
-        "tab: \"\\t\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 4, "Escaped tab character", "tab: \"\\t\"\n").run();
 }
 
 #[test]
 fn ch_5_7_05_escape_line_feed() {
-    Fixture::new(
-        "5.7",
-        5,
-        "Escaped line feed character",
-        "lf: \"\\n\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 5, "Escaped line feed character", "lf: \"\\n\"\n").run();
 }
 
 #[test]
@@ -503,13 +371,7 @@ fn ch_5_7_06_escape_vertical_tab() {
 
 #[test]
 fn ch_5_7_07_escape_form_feed() {
-    Fixture::new(
-        "5.7",
-        7,
-        "Escaped form feed character",
-        "ff: \"\\f\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 7, "Escaped form feed character", "ff: \"\\f\"\n").run();
 }
 
 #[test]
@@ -525,24 +387,12 @@ fn ch_5_7_08_escape_carriage_return() {
 
 #[test]
 fn ch_5_7_09_escape_escape() {
-    Fixture::new(
-        "5.7",
-        9,
-        "Escaped escape character",
-        "esc: \"\\e\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 9, "Escaped escape character", "esc: \"\\e\"\n").run();
 }
 
 #[test]
 fn ch_5_7_10_escape_space() {
-    Fixture::new(
-        "5.7",
-        10,
-        "Escaped space character",
-        "space: \"\\ \"\n",
-    )
-    .run();
+    Fixture::new("5.7", 10, "Escaped space character", "space: \"\\ \"\n").run();
 }
 
 #[test]
@@ -558,13 +408,7 @@ fn ch_5_7_11_escape_double_quote() {
 
 #[test]
 fn ch_5_7_12_escape_slash() {
-    Fixture::new(
-        "5.7",
-        12,
-        "Escaped forward slash",
-        "slash: \"\\/\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 12, "Escaped forward slash", "slash: \"\\/\"\n").run();
 }
 
 #[test]
@@ -580,46 +424,22 @@ fn ch_5_7_13_escape_backslash() {
 
 #[test]
 fn ch_5_7_14_escape_next_line() {
-    Fixture::new(
-        "5.7",
-        14,
-        "Escaped next line character",
-        "nel: \"\\N\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 14, "Escaped next line character", "nel: \"\\N\"\n").run();
 }
 
 #[test]
 fn ch_5_7_15_escape_non_breaking_space() {
-    Fixture::new(
-        "5.7",
-        15,
-        "Escaped non-breaking space",
-        "nbsp: \"\\_\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 15, "Escaped non-breaking space", "nbsp: \"\\_\"\n").run();
 }
 
 #[test]
 fn ch_5_7_16_escape_line_separator() {
-    Fixture::new(
-        "5.7",
-        16,
-        "Escaped line separator",
-        "ls: \"\\L\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 16, "Escaped line separator", "ls: \"\\L\"\n").run();
 }
 
 #[test]
 fn ch_5_7_17_escape_paragraph_separator() {
-    Fixture::new(
-        "5.7",
-        17,
-        "Escaped paragraph separator",
-        "ps: \"\\P\"\n",
-    )
-    .run();
+    Fixture::new("5.7", 17, "Escaped paragraph separator", "ps: \"\\P\"\n").run();
 }
 
 #[test]
@@ -772,37 +592,19 @@ fn ch_5_8_1_05_unicode_cjk() {
 #[test]
 fn ch_5_8_1_06_unicode_arabic() {
     // U+0600..U+06FF
-    Fixture::new(
-        "5.8.1",
-        6,
-        "Unicode Arabic range",
-        "arabic: مرحبا العالم\n",
-    )
-    .run();
+    Fixture::new("5.8.1", 6, "Unicode Arabic range", "arabic: مرحبا العالم\n").run();
 }
 
 #[test]
 fn ch_5_8_1_07_unicode_hebrew() {
     // U+0590..U+05FF
-    Fixture::new(
-        "5.8.1",
-        7,
-        "Unicode Hebrew range",
-        "hebrew: שלום עולם\n",
-    )
-    .run();
+    Fixture::new("5.8.1", 7, "Unicode Hebrew range", "hebrew: שלום עולם\n").run();
 }
 
 #[test]
 fn ch_5_8_1_08_unicode_emoji() {
     // U+1F300..U+1F9FF (Emoji)
-    Fixture::new(
-        "5.8.1",
-        8,
-        "Unicode emoji range",
-        "emoji: 😀🎉🚀💻🌍🔥✨\n",
-    )
-    .run();
+    Fixture::new("5.8.1", 8, "Unicode emoji range", "emoji: 😀🎉🚀💻🌍🔥✨\n").run();
 }
 
 #[test]
@@ -837,7 +639,10 @@ fn ch_5_8_2_01_null_character_error() {
     // U+0000 (NULL) is not allowed in plain scalars
     let input = "key: value\0more\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "NULL character should be rejected in plain scalars");
+    assert!(
+        result.is_err(),
+        "NULL character should be rejected in plain scalars"
+    );
 }
 
 #[test]
@@ -951,7 +756,10 @@ fn ch_5_8_4_01_invalid_escape_letter() {
     // Invalid escape like \q
     let input = "text: \"\\q\"\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "Invalid escape sequence \\q should be rejected");
+    assert!(
+        result.is_err(),
+        "Invalid escape sequence \\q should be rejected"
+    );
 }
 
 #[test]
@@ -959,7 +767,10 @@ fn ch_5_8_4_02_incomplete_hex_escape() {
     // Incomplete \xNN escape
     let input = "text: \"\\x4\"\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "Incomplete hex escape \\x4 should be rejected");
+    assert!(
+        result.is_err(),
+        "Incomplete hex escape \\x4 should be rejected"
+    );
 }
 
 #[test]
@@ -967,7 +778,10 @@ fn ch_5_8_4_03_incomplete_unicode16_escape() {
     // Incomplete \uNNNN escape
     let input = "text: \"\\u004\"\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "Incomplete unicode escape \\u004 should be rejected");
+    assert!(
+        result.is_err(),
+        "Incomplete unicode escape \\u004 should be rejected"
+    );
 }
 
 #[test]
@@ -975,7 +789,10 @@ fn ch_5_8_4_04_incomplete_unicode32_escape() {
     // Incomplete \UNNNNNNNN escape
     let input = "text: \"\\U0000004\"\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "Incomplete 32-bit unicode escape should be rejected");
+    assert!(
+        result.is_err(),
+        "Incomplete 32-bit unicode escape should be rejected"
+    );
 }
 
 #[test]
@@ -983,7 +800,10 @@ fn ch_5_8_4_05_invalid_hex_digits() {
     // Invalid hex digits in escape
     let input = "text: \"\\x4G\"\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "Invalid hex digits in escape should be rejected");
+    assert!(
+        result.is_err(),
+        "Invalid hex digits in escape should be rejected"
+    );
 }
 
 #[test]
@@ -1010,7 +830,10 @@ fn ch_5_8_5_01_high_surrogate_alone() {
     // High surrogate (U+D800..U+DBFF) without low surrogate
     let input = "text: \"\\uD800\"\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "High surrogate without low surrogate should be rejected");
+    assert!(
+        result.is_err(),
+        "High surrogate without low surrogate should be rejected"
+    );
 }
 
 #[test]
@@ -1018,7 +841,10 @@ fn ch_5_8_5_02_low_surrogate_alone() {
     // Low surrogate (U+DC00..U+DFFF) without high surrogate
     let input = "text: \"\\uDC00\"\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "Low surrogate without high surrogate should be rejected");
+    assert!(
+        result.is_err(),
+        "Low surrogate without high surrogate should be rejected"
+    );
 }
 
 #[test]
@@ -1026,7 +852,10 @@ fn ch_5_8_5_03_reversed_surrogate_pair() {
     // Low surrogate before high surrogate
     let input = "text: \"\\uDC00\\uD800\"\n";
     let result = Doc::from_str(input);
-    assert!(result.is_err(), "Reversed surrogate pair should be rejected");
+    assert!(
+        result.is_err(),
+        "Reversed surrogate pair should be rejected"
+    );
 }
 
 #[test]

@@ -321,13 +321,7 @@ fn ch_2_5_01_invoice_document() {
 
 #[test]
 fn ch_2_6_01_empty_content() {
-    Fixture::new(
-        "2.6",
-        1,
-        "Empty content (null values)",
-        "key:\n",
-    )
-    .run();
+    Fixture::new("2.6", 1, "Empty content (null values)", "key:\n").run();
 }
 
 #[test]
@@ -343,13 +337,7 @@ fn ch_2_6_02_mixed_block_and_flow() {
 
 #[test]
 fn ch_2_6_03_nested_sequences() {
-    Fixture::new(
-        "2.6",
-        3,
-        "Nested sequences (3 levels deep)",
-        "- - - deep\n",
-    )
-    .run();
+    Fixture::new("2.6", 3, "Nested sequences (3 levels deep)", "- - - deep\n").run();
 }
 
 #[test]
@@ -391,24 +379,12 @@ fn ch_2_6_06_multiline_keys_values() {
 
 #[test]
 fn ch_2_edge_01_empty_sequence() {
-    Fixture::new(
-        "2.edge",
-        1,
-        "Empty sequence",
-        "empty: []\n",
-    )
-    .run();
+    Fixture::new("2.edge", 1, "Empty sequence", "empty: []\n").run();
 }
 
 #[test]
 fn ch_2_edge_02_empty_mapping() {
-    Fixture::new(
-        "2.edge",
-        2,
-        "Empty mapping",
-        "empty: {}\n",
-    )
-    .run();
+    Fixture::new("2.edge", 2, "Empty mapping", "empty: {}\n").run();
 }
 
 #[test]
@@ -666,7 +642,10 @@ fn ch_2_error_03_trailing_comma_flow_sequence() {
     let result = Doc::from_str(input);
 
     // Should parse successfully
-    assert!(result.is_ok(), "Trailing comma in flow sequence should be allowed (YAML 1.2.2)");
+    assert!(
+        result.is_ok(),
+        "Trailing comma in flow sequence should be allowed (YAML 1.2.2)"
+    );
 }
 
 #[test]
@@ -677,7 +656,10 @@ fn ch_2_error_04_trailing_comma_flow_mapping() {
     let result = Doc::from_str(input);
 
     // Should parse successfully
-    assert!(result.is_ok(), "Trailing comma in flow mapping should be allowed (YAML 1.2.2)");
+    assert!(
+        result.is_ok(),
+        "Trailing comma in flow mapping should be allowed (YAML 1.2.2)"
+    );
 }
 
 #[test]
@@ -686,7 +668,10 @@ fn ch_2_error_05_unmatched_bracket_extra_close() {
     let input = "[a, b]]\n";
     let result = Doc::from_str(input);
 
-    assert!(result.is_err(), "Unmatched closing bracket should be rejected");
+    assert!(
+        result.is_err(),
+        "Unmatched closing bracket should be rejected"
+    );
 }
 
 #[test]
@@ -695,7 +680,10 @@ fn ch_2_error_06_unmatched_bracket_missing_close() {
     let input = "[a, b\n";
     let result = Doc::from_str(input);
 
-    assert!(result.is_err(), "Missing closing bracket should be rejected");
+    assert!(
+        result.is_err(),
+        "Missing closing bracket should be rejected"
+    );
 }
 
 #[test]
@@ -704,7 +692,10 @@ fn ch_2_error_07_unmatched_brace_extra_close() {
     let input = "{a: 1}}\n";
     let result = Doc::from_str(input);
 
-    assert!(result.is_err(), "Unmatched closing brace should be rejected");
+    assert!(
+        result.is_err(),
+        "Unmatched closing brace should be rejected"
+    );
 }
 
 #[test]
@@ -722,7 +713,10 @@ fn ch_2_error_09_mismatched_brackets_braces() {
     let input = "[a, b}\n";
     let result = Doc::from_str(input);
 
-    assert!(result.is_err(), "Mismatched bracket/brace should be rejected");
+    assert!(
+        result.is_err(),
+        "Mismatched bracket/brace should be rejected"
+    );
 }
 
 #[test]
@@ -731,7 +725,10 @@ fn ch_2_error_10_nested_unmatched() {
     let input = "[[a, b], [c, d]\n";
     let result = Doc::from_str(input);
 
-    assert!(result.is_err(), "Nested unmatched brackets should be rejected");
+    assert!(
+        result.is_err(),
+        "Nested unmatched brackets should be rejected"
+    );
 }
 
 #[test]
@@ -740,7 +737,10 @@ fn ch_2_error_11_unterminated_double_quote() {
     let input = "key: \"unterminated\n";
     let result = Doc::from_str(input);
 
-    assert!(result.is_err(), "Unterminated double quote should be rejected");
+    assert!(
+        result.is_err(),
+        "Unterminated double quote should be rejected"
+    );
 }
 
 #[test]
@@ -749,5 +749,8 @@ fn ch_2_error_12_unterminated_single_quote() {
     let input = "key: 'unterminated\n";
     let result = Doc::from_str(input);
 
-    assert!(result.is_err(), "Unterminated single quote should be rejected");
+    assert!(
+        result.is_err(),
+        "Unterminated single quote should be rejected"
+    );
 }

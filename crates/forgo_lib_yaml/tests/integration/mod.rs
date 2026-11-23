@@ -1,4 +1,4 @@
 //! Integration tests
 
-mod editor;
 mod ast;
+mod editor;

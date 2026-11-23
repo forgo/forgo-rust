@@ -8,7 +8,7 @@
 //! - Path conversions to Seg
 
 use crate::api::*;
-use forgo_lib_yaml::{parse, Elem, Seg};
+use forgo_lib_yaml::{Elem, Seg, parse};
 
 // ============================================================================
 // IntoPath Trait Tests - Array Literals
@@ -226,7 +226,11 @@ fn test_modify_all_jobs_with_wildcard() {
     });
 
     // Verify both jobs have timeout
-    let jobs = doc.root().node().as_map().unwrap()[0].1.node().as_map().unwrap();
+    let jobs = doc.root().node().as_map().unwrap()[0]
+        .1
+        .node()
+        .as_map()
+        .unwrap();
 
     for (job_name, job) in jobs {
         if job_name == "build" || job_name == "deploy" {
@@ -248,14 +252,23 @@ fn test_add_step_to_all_jobs() {
     });
 
     // Verify step was added to both jobs
-    let jobs = doc.root().node().as_map().unwrap()[0].1.node().as_map().unwrap();
+    let jobs = doc.root().node().as_map().unwrap()[0]
+        .1
+        .node()
+        .as_map()
+        .unwrap();
 
     for (job_name, job) in jobs {
         if job_name == "build" || job_name == "deploy" {
             let job_map = job.node().as_map().unwrap();
-            let steps = job_map.iter()
+            let steps = job_map
+                .iter()
                 .find(|(k, _)| k == "steps")
-                .unwrap().1.node().as_seq().unwrap();
+                .unwrap()
+                .1
+                .node()
+                .as_seq()
+                .unwrap();
 
             // build: 2 original + 1 new = 3 steps
             // deploy: 1 original + 1 new = 2 steps
@@ -312,9 +325,7 @@ fn test_nonexistent_path_does_not_panic() {
     let mut doc = sample_doc();
 
     // Path that doesn't exist should return false (not found)
-    let modified = doc.visit_values_mut(&["nonexistent", "path"], |_| {
-        true
-    });
+    let modified = doc.visit_values_mut(&["nonexistent", "path"], |_| true);
 
     assert!(!modified);
 }
@@ -324,9 +335,7 @@ fn test_type_mismatch_in_path_does_not_panic() {
     let mut doc = sample_doc();
 
     // Trying to traverse a scalar as a map should not panic
-    let modified = doc.visit_values_mut(&["version", "nested"], |_| {
-        true
-    });
+    let modified = doc.visit_values_mut(&["version", "nested"], |_| true);
 
     assert!(!modified);
 }
@@ -337,9 +346,7 @@ fn test_wildcard_on_non_map_does_not_panic() {
     let mut doc = parse(yaml).unwrap();
 
     // Wildcard on a sequence should not panic
-    let modified = doc.visit_values_mut(&["*"], |_| {
-        true
-    });
+    let modified = doc.visit_values_mut(&["*"], |_| true);
 
     // Might or might not modify depending on implementation
     // Main thing is it shouldn't panic
@@ -361,6 +368,10 @@ fn test_path_api_example_from_docs() {
     });
 
     // Verify it worked
-    let jobs = doc.root().node().as_map().unwrap()[0].1.node().as_map().unwrap();
+    let jobs = doc.root().node().as_map().unwrap()[0]
+        .1
+        .node()
+        .as_map()
+        .unwrap();
     assert!(jobs.len() >= 2);
 }
