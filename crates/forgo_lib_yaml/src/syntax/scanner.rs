@@ -108,6 +108,9 @@ pub(crate) struct Scanner<'a> {
     tokens_parsed: usize,
     stream_start_produced: bool,
     stream_end_produced: bool,
+    /// The queue's first token is final (no implicit key can still be
+    /// inserted before it) until it is taken.
+    head_ready: bool,
     /// Current block indentation; -1 outside any block collection.
     indent: i64,
     indents: Vec<i64>,
@@ -159,6 +162,7 @@ impl<'a> Scanner<'a> {
             tokens_parsed: 0,
             stream_start_produced: false,
             stream_end_produced: false,
+            head_ready: false,
             indent: -1,
             indents: Vec::new(),
             simple_key_allowed: false,
@@ -179,6 +183,9 @@ impl<'a> Scanner<'a> {
     // ------------------------------------------------------------------
 
     pub fn peek(&mut self) -> Res<&Token<'a>> {
+        if self.head_ready {
+            return Ok(self.tokens.front().expect("a ready head token is queued"));
+        }
         if let Some((line, col, msg)) = &self.error {
             return Err(Error::Syntax {
                 line: *line,
@@ -192,12 +199,14 @@ impl<'a> Scanner<'a> {
             }
             return Err(e);
         }
+        self.head_ready = true;
         Ok(self.tokens.front().expect("token queue is non-empty"))
     }
 
     pub fn next_token(&mut self) -> Res<Token<'a>> {
         self.peek()?;
         self.tokens_parsed += 1;
+        self.head_ready = false;
         let t = self.tokens.pop_front().expect("token queue is non-empty");
         if matches!(t.kind, TokenKind::StreamEnd) {
             self.stream_end_produced = true;
@@ -701,7 +710,23 @@ impl<'a> Scanner<'a> {
     /// Drop candidates that can no longer become implicit keys: in block
     /// context and flow sequences a key must be on one line and at most
     /// 1024 characters long. Keys in flow mappings have neither limit.
+    #[inline]
     fn stale_simple_keys(&mut self) -> Res<()> {
+        // Usually the oldest candidate is still on this line, close by.
+        match self.stale_levels.front() {
+            None => Ok(()),
+            Some(&level) => {
+                let k = &self.simple_keys[level].mark;
+                if k.line == self.mark.line && self.mark.col <= k.col + 1024 {
+                    Ok(())
+                } else {
+                    self.drop_stale_simple_keys()
+                }
+            }
+        }
+    }
+
+    fn drop_stale_simple_keys(&mut self) -> Res<()> {
         while let Some(&level) = self.stale_levels.front() {
             let k = self.simple_keys[level];
             if k.mark.line < self.mark.line || self.mark.col > k.mark.col + 1024 {
