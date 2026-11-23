@@ -902,6 +902,24 @@ fn ch_3_7_2_02_duplicate_keys_canonical_comparison() {
 }
 
 #[test]
+fn ch_3_7_2_02b_duplicate_keys_through_aliases() {
+    // An alias key equals the node it names.
+    let doc = Doc::from_str("&k a: 1\n*k : 2\n").unwrap();
+    assert!(doc.check_unique_keys().is_err());
+    // X38W: `*a` names the key `[a, b]` of the first entry.
+    let doc = Doc::from_str("{ &a [a, &b b]: *b, *a : [c, *b, d]}\n").unwrap();
+    assert!(doc.check_unique_keys().is_err());
+    // An alias names the latest anchor before it.
+    let doc = Doc::from_str("x: &k a\n&k b: 1\n*k : 2\n").unwrap();
+    assert!(doc.check_unique_keys().is_err());
+    let doc = Doc::from_str("&k a: 1\nx: &k b\n*k : 2\n").unwrap();
+    assert!(doc.check_unique_keys().is_ok());
+    // A node holding an alias to itself doesn't loop.
+    let doc = Doc::from_str("&s [*s]: 1\n[[x]]: 2\n").unwrap();
+    assert!(doc.check_unique_keys().is_ok());
+}
+
+#[test]
 fn ch_3_7_2_03_duplicate_keys_numeric_formats() {
     // Different numeric formats: hexadecimal and decimal
     let input = "0xB: hex\n11: decimal\n";

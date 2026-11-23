@@ -507,17 +507,21 @@ impl MapKey {
             && crate::schema::is_null(text)
     }
 
-    /// A canonical form for comparing keys by value (YAML 1.2.2 §3.2.1.1):
-    /// `a` and `"a"` are equal, as are `0x1` and `1`.
-    pub(crate) fn canonical(&self) -> String {
+    /// The key's value as a string, for uniqueness checks (YAML 1.2.2
+    /// §3.2.1.1): equal for keys with equal values (`a` and `"a"`, `1` and
+    /// `0x1`). Aliases stand for the node they name in `anchors`.
+    pub(crate) fn canonical(&self, anchors: &Anchors<'_>) -> String {
         match self {
             MapKey::Str(s) => format!("s:{s}"),
-            MapKey::Complex(e) => canonical_elem(e),
+            MapKey::Complex(e) => canonical_elem(e, anchors, &mut Vec::new()),
         }
     }
 }
 
-fn canonical_elem(e: &Elem) -> String {
+/// Anchored nodes by name: the latest definition so far in document order.
+pub(crate) type Anchors<'a> = std::collections::HashMap<&'a str, &'a Elem>;
+
+fn canonical_elem<'a>(e: &'a Elem, anchors: &Anchors<'a>, resolving: &mut Vec<&'a str>) -> String {
     match &e.node {
         Node::Scalar(Scalar::Str(s)) => format!("s:{s}"),
         Node::Scalar(Scalar::Bool(b)) => format!("b:{b}"),
@@ -529,15 +533,33 @@ fn canonical_elem(e: &Elem) -> String {
                 crate::schema::float_value(text).map_or_else(|| text.clone(), |f| format!("{f:?}"))
             ),
         },
-        Node::Alias(a) => format!("*{a}"),
+        Node::Alias(a) => match anchors.get(a.as_str()) {
+            // A node can't contain an alias to itself as a value.
+            Some(target) if !resolving.contains(&a.as_str()) => {
+                resolving.push(a);
+                let s = canonical_elem(target, anchors, resolving);
+                resolving.pop();
+                s
+            }
+            _ => format!("*{a}"),
+        },
         Node::Seq(items) => {
-            let parts: Vec<String> = items.iter().map(canonical_elem).collect();
+            let parts: Vec<String> = items
+                .iter()
+                .map(|i| canonical_elem(i, anchors, resolving))
+                .collect();
             format!("[{}]", parts.join(","))
         }
         Node::Map(entries) => {
             let mut parts: Vec<String> = entries
                 .iter()
-                .map(|(k, v)| format!("{}={}", k.canonical(), canonical_elem(v)))
+                .map(|(k, v)| {
+                    let k = match k {
+                        MapKey::Str(s) => format!("s:{s}"),
+                        MapKey::Complex(ke) => canonical_elem(ke, anchors, resolving),
+                    };
+                    format!("{k}={}", canonical_elem(v, anchors, resolving))
+                })
                 .collect();
             parts.sort();
             format!("{{{}}}", parts.join(","))
@@ -1404,43 +1426,58 @@ impl Doc {
     }
 
     /// Check that no mapping has two equal keys (YAML 1.2.2 §3.2.1.1).
-    /// Keys compare by value: `a`/`"a"` and `1`/`0x1` are duplicates.
-    /// Parsing keeps duplicates (lookups use the last one); call this to
-    /// enforce the spec's uniqueness rule.
+    /// Keys compare by value: `a` and `"a"`, `1` and `0x1`, and an alias
+    /// and the node it names are duplicates. Parsing keeps duplicates
+    /// (lookups use the last one); call this to enforce the spec's rule.
     pub fn check_unique_keys(&self) -> Result<(), Error> {
-        fn go(e: &Elem, path: &mut Vec<String>) -> Result<(), Error> {
-            match &e.node {
-                Node::Map(entries) => {
-                    let mut seen = std::collections::HashSet::new();
-                    for (k, v) in entries {
-                        if !seen.insert(k.canonical()) {
-                            let at = if path.is_empty() {
-                                String::from("the root mapping")
-                            } else {
-                                format!("`{}`", path.join("."))
-                            };
-                            return Err(Error::Parse(format!(
-                                "duplicate mapping key `{k}` in {at}"
-                            )));
+        struct Walk<'a> {
+            anchors: Anchors<'a>,
+            path: Vec<String>,
+        }
+        impl<'a> Walk<'a> {
+            fn node(&mut self, e: &'a Elem) -> Result<(), Error> {
+                if let Some(a) = &e.meta.anchor {
+                    self.anchors.insert(a, e);
+                }
+                match &e.node {
+                    Node::Map(entries) => {
+                        let mut seen = std::collections::HashSet::new();
+                        for (k, v) in entries {
+                            if let MapKey::Complex(ke) = k {
+                                self.node(ke)?;
+                            }
+                            if !seen.insert(k.canonical(&self.anchors)) {
+                                let at = if self.path.is_empty() {
+                                    String::from("the root mapping")
+                                } else {
+                                    format!("`{}`", self.path.join("."))
+                                };
+                                return Err(Error::Parse(format!(
+                                    "duplicate mapping key `{k}` in {at}"
+                                )));
+                            }
+                            self.path.push(k.to_string());
+                            self.node(v)?;
+                            self.path.pop();
                         }
-                        path.push(k.to_string());
-                        go(v, path)?;
-                        path.pop();
                     }
-                    Ok(())
-                }
-                Node::Seq(items) => {
-                    for (i, it) in items.iter().enumerate() {
-                        path.push(i.to_string());
-                        go(it, path)?;
-                        path.pop();
+                    Node::Seq(items) => {
+                        for (i, it) in items.iter().enumerate() {
+                            self.path.push(i.to_string());
+                            self.node(it)?;
+                            self.path.pop();
+                        }
                     }
-                    Ok(())
+                    _ => {}
                 }
-                _ => Ok(()),
+                Ok(())
             }
         }
-        go(&self.root, &mut Vec::new())
+        Walk {
+            anchors: Anchors::new(),
+            path: Vec::new(),
+        }
+        .node(&self.root)
     }
 
     /// The root node.
