@@ -71,19 +71,19 @@ fn main() {
 
     // Add application metadata
     server_config.push((
-        "name".to_string(),
+        MapKey::from_str("name"),
         Elem::string("web-api")
             .with_comment("Application identifier"),
     ));
 
     server_config.push((
-        "version".to_string(),
+        MapKey::from_str("version"),
         Elem::string("1.0.0")
             .with_comment("Semantic version"),
     ));
 
     server_config.push((
-        "environment".to_string(),
+        MapKey::from_str("environment"),
         Elem::string("production")
             .with_comment("deployment environment"),
     ));
@@ -91,21 +91,21 @@ fn main() {
     // Build server settings sub-map
     let mut server_settings: Vec<(MapKey, Elem)> = vec![];
     server_settings.push((
-        "host".to_string(),
+        MapKey::from_str("host"),
         Elem::string("0.0.0.0"),
     ));
     server_settings.push((
-        "port".to_string(),
+        MapKey::from_str("port"),
         Elem::number(8080),
     ));
     server_settings.push((
-        "workers".to_string(),
+        MapKey::from_str("workers"),
         Elem::number(4)
             .with_comment("Number of worker threads"),
     ));
 
     server_config.push((
-        "server".to_string(),
+        MapKey::from_str("server"),
         Elem::new(Node::Map(server_settings))
             .with_leading_comments(vec!["Server configuration".to_string()])
             .prefer_block(),
@@ -121,7 +121,7 @@ fn main() {
     ];
 
     server_config.push((
-        "features".to_string(),
+        MapKey::from_str("features"),
         Elem::new(Node::Seq(features))
             .with_leading_comments(vec!["Enabled features".to_string()]),
     ));
@@ -129,29 +129,29 @@ fn main() {
     // Build database configuration
     let mut db_config: Vec<(MapKey, Elem)> = vec![];
     db_config.push((
-        "driver".to_string(),
+        MapKey::from_str("driver"),
         Elem::string("postgresql"),
     ));
     db_config.push((
-        "host".to_string(),
+        MapKey::from_str("host"),
         Elem::string("localhost"),
     ));
     db_config.push((
-        "port".to_string(),
+        MapKey::from_str("port"),
         Elem::number(5432),
     ));
     db_config.push((
-        "database".to_string(),
+        MapKey::from_str("database"),
         Elem::string("production_db"),
     ));
     db_config.push((
-        "pool_size".to_string(),
+        MapKey::from_str("pool_size"),
         Elem::number(10)
             .with_comment("Connection pool size"),
     ));
 
     server_config.push((
-        "database".to_string(),
+        MapKey::from_str("database"),
         Elem::new(Node::Map(db_config))
             .with_leading_comments(vec![
                 "Database configuration".to_string(),
