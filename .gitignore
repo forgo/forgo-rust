@@ -26,3 +26,15 @@ crates/forgo_lib_yaml/tests/yaml-test-suite-data/
 /test_*
 /debug_*
 crates/forgo_lib_yaml/test_*
+
+# Local secrets and environment files (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local tool state and personal settings
+.claude/settings.local.json
+.claude/.cc-writes/
+.idea/
