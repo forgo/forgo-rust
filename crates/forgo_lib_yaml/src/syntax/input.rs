@@ -61,9 +61,9 @@ pub fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
                     msg: "UTF-16 input has an odd number of bytes".into(),
                 });
             }
-            let units = bytes.chunks_exact(2).map(|p| match enc {
-                Encoding::Utf16Le => u16::from_le_bytes([p[0], p[1]]),
-                _ => u16::from_be_bytes([p[0], p[1]]),
+            let units = bytes.as_chunks::<2>().0.iter().map(|&p| match enc {
+                Encoding::Utf16Le => u16::from_le_bytes(p),
+                _ => u16::from_be_bytes(p),
             });
             let mut out = String::with_capacity(bytes.len() / 2);
             for (i, r) in char::decode_utf16(units).enumerate() {
@@ -88,10 +88,10 @@ pub fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
                 });
             }
             let mut out = String::with_capacity(bytes.len() / 4);
-            for (i, q) in bytes.chunks_exact(4).enumerate() {
+            for (i, &q) in bytes.as_chunks::<4>().0.iter().enumerate() {
                 let v = match enc {
-                    Encoding::Utf32Le => u32::from_le_bytes([q[0], q[1], q[2], q[3]]),
-                    _ => u32::from_be_bytes([q[0], q[1], q[2], q[3]]),
+                    Encoding::Utf32Le => u32::from_le_bytes(q),
+                    _ => u32::from_be_bytes(q),
                 };
                 match char::from_u32(v) {
                     Some(c) => out.push(c),
