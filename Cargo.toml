@@ -6,3 +6,6 @@ members = [
     "crates/forgo_lib_cli",
     "crates/forgo_lib_yaml",
 ]
+# Standalone benchmark crate with its own lockfile (third-party deps stay out
+# of the main workspace): see crates/forgo_lib_yaml_bench/Cargo.toml.
+exclude = ["crates/forgo_lib_yaml_bench"]

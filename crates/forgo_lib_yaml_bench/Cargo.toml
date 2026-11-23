@@ -1,0 +1,35 @@
+# Benchmarks comparing forgo_lib_yaml with other Rust YAML parsers.
+#
+# This crate is deliberately NOT a member of the root workspace (see the
+# root Cargo.toml `exclude`): it has its own [workspace] and Cargo.lock so
+# that the third-party crates it compares against never appear in the main
+# lockfile, the security audit, or the release packaging. forgo_lib_yaml
+# itself stays zero-dependency.
+#
+#   cargo bench --manifest-path crates/forgo_lib_yaml_bench/Cargo.toml
+#   cargo run --release --manifest-path crates/forgo_lib_yaml_bench/Cargo.toml --bin report
+
+[package]
+name = "forgo_lib_yaml_bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[workspace]
+
+[dependencies]
+forgo_lib_yaml = { path = "../forgo_lib_yaml" }
+saphyr = "0.4"
+saphyr-parser = "0.4"
+serde = "1"
+serde_yaml = "0.9"
+unsafe-libyaml = "0.2"
+yaml-rust2 = "0.13"
+
+[dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "parse"
+harness = false
