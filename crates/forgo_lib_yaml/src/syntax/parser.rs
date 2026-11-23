@@ -111,6 +111,14 @@ impl<'a> Parser<'a> {
         &self.scanner.comments
     }
 
+    /// Scan up to the next token, so that every comment before it is in
+    /// [`Parser::comments`]. Errors are left for `next_event` to report.
+    pub(crate) fn scan_ahead(&mut self) {
+        if self.state != State::End && !self.failed {
+            let _ = self.scanner.peek();
+        }
+    }
+
     /// The next event, or `None` after `StreamEnd` or an error.
     pub fn next_event(&mut self) -> Res<Option<Ev<'a>>> {
         if self.state == State::End || self.failed {
@@ -794,6 +802,11 @@ impl<'a> Events<'a> {
     /// Comments scanned so far; complete once the iterator is exhausted.
     pub fn comments(&self) -> &[Comment<'a>] {
         self.parser.comments()
+    }
+
+    /// Scan up to the next token (so comments before it are available).
+    pub(crate) fn scan_ahead(&mut self) {
+        self.parser.scan_ahead();
     }
 }
 

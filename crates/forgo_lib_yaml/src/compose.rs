@@ -4,9 +4,10 @@
 //! position):
 //! - full-line comments become `leading_comments` of the next map entry
 //!   (stored on its value), sequence item, or document root;
-//! - an end-of-line comment becomes the `trailing_comment` of the node that
-//!   ends on that line; one that follows only an indicator (`key:` or `-`
-//!   with the value on a later line) goes to that value;
+//! - an end-of-line comment becomes the `trailing_comment` of the last node
+//!   completed before it on its line (in `[a, b] # c`, the sequence); one
+//!   that follows only an indicator (`key:` or `-` with the value on a later
+//!   line) goes to that value;
 //! - comments after a document's last node go to the document footer.
 //!
 //! Keys that are plain or quoted strings without properties become
@@ -31,14 +32,8 @@ pub(crate) fn compose_stream_with(
     options: &crate::ParseOptions,
 ) -> Result<Vec<Doc>, Error> {
     let mut events = syntax::events(input);
-    let mut evs = Vec::new();
-    for r in &mut events {
-        evs.push(r?);
-    }
-    let comments = events.comments().to_vec();
     let mut c = Composer {
-        input,
-        comments,
+        comments: Vec::new(),
         ci: 0,
         leading: Vec::new(),
         carry: None,
@@ -48,8 +43,20 @@ pub(crate) fn compose_stream_with(
         doc: None,
         docs: Vec::new(),
         max_depth: options.max_depth,
+        last: Last::None,
+        saw_cr: input.contains('\r'),
+        leading_blank: input
+            .trim_start_matches('\u{FEFF}')
+            .starts_with(['\n', '\r']),
     };
-    for (ev, span) in evs {
+    // Stream: compose each event as it is parsed. Scanning one token ahead
+    // makes the comments up to the next node available (a trailing comment
+    // follows the node it belongs to).
+    while let Some(r) = events.next() {
+        let (ev, span) = r?;
+        events.scan_ahead();
+        let known = c.comments.len();
+        c.comments.extend_from_slice(&events.comments()[known..]);
         c.event(ev, span)?;
     }
     Ok(c.docs)
@@ -97,6 +104,16 @@ enum Role {
     Item,
 }
 
+/// The most recently completed node, for end-of-line comments.
+#[derive(Clone, Copy)]
+enum Last {
+    None,
+    /// A mapping key ending at this mark: its comments go to the value.
+    Key(Mark),
+    /// The newest value, item or root (the last element of the top frame).
+    Node(Mark),
+}
+
 struct DocInfo {
     explicit_start: bool,
     version: Option<(u32, u32)>,
@@ -105,7 +122,6 @@ struct DocInfo {
 }
 
 struct Composer<'a> {
-    input: &'a str,
     comments: Vec<Comment<'a>>,
     ci: usize,
     /// Full-line comments waiting for the next entry, item or root.
@@ -118,6 +134,11 @@ struct Composer<'a> {
     doc: Option<DocInfo>,
     docs: Vec<Doc>,
     max_depth: usize,
+    last: Last,
+    /// The input uses CR line breaks (computed once).
+    saw_cr: bool,
+    /// The input starts with an empty line.
+    leading_blank: bool,
 }
 
 fn source_tag(t: &Tag<'_>) -> String {
@@ -206,27 +227,61 @@ impl<'a> Composer<'a> {
         }
     }
 
-    /// Attach an end-of-line comment that follows a node ending at `end`.
-    /// With `within`, a trailing comment before that offset (a block
-    /// scalar's header comment) also qualifies.
-    fn grab_trailing(&mut self, meta: &mut Meta, end: Mark, within: Option<usize>) {
-        let Some(c) = self.comments.get(self.ci) else {
-            return;
-        };
-        if !c.trailing {
-            return;
+    /// The newest value, item or root.
+    fn last_meta_mut(&mut self) -> Option<&mut Meta> {
+        match self.stack.last_mut() {
+            None => self.root.as_mut().map(|e| &mut e.meta),
+            Some(Frame::Seq(seq)) => seq.node.as_seq_mut()?.last_mut().map(|e| &mut e.meta),
+            Some(Frame::Map { elem, .. }) => {
+                elem.node.as_map_mut()?.last_mut().map(|(_, v)| &mut v.meta)
+            }
         }
-        let ok = match within {
-            // A block scalar's header comment: inside its span, or on its
-            // first line when the scalar has no content.
-            Some(limit) => c.start.index < limit || c.start.line == end.line,
-            None => c.start.line == end.line && c.start.index >= end.index,
+    }
+
+    /// Before the event at `pos`: end-of-line comments on the line where
+    /// the last completed node ended, after it and before `pos`, belong to
+    /// that node (or, after a key, to its value).
+    fn attach_trailing(&mut self, pos: usize) {
+        let (end, key) = match std::mem::replace(&mut self.last, Last::None) {
+            Last::None => return,
+            Last::Key(m) => (m, true),
+            Last::Node(m) => (m, false),
         };
-        if ok {
+        while let Some(c) = self.comments.get(self.ci) {
+            let same_line = c.start.line == end.line && c.start.index >= end.index;
+            if !(c.trailing && same_line && c.start.index < pos) {
+                break;
+            }
+            let text = c.text.trim().to_string();
+            self.ci += 1;
+            if key {
+                append_comment(&mut self.carry, text);
+            } else if let Some(meta) = self.last_meta_mut() {
+                append_comment(&mut meta.trailing_comment, text);
+            }
+        }
+    }
+
+    /// A block scalar's header comment (inside its span, or on its first
+    /// line when it has no content).
+    fn header_comment(&mut self, meta: &mut Meta, span: Span) {
+        if let Some(c) = self.comments.get(self.ci)
+            && c.trailing
+            && (c.start.index < span.end.index || c.start.line == span.end.line)
+        {
             let text = c.text.trim().to_string();
             append_comment(&mut meta.trailing_comment, text);
             self.ci += 1;
         }
+    }
+
+    /// Record what just completed, for comments on the rest of its line.
+    fn completed(&mut self, was_key: bool, end: Mark) {
+        self.last = if was_key {
+            Last::Key(end)
+        } else {
+            Last::Node(end)
+        };
     }
 
     fn complete(&mut self, elem: Elem) {
@@ -271,6 +326,11 @@ impl<'a> Composer<'a> {
     }
 
     fn event(&mut self, ev: Event<'a>, span: Span) -> Result<(), Error> {
+        let pos = match ev {
+            Event::StreamEnd => usize::MAX,
+            _ => span.start.index,
+        };
+        self.attach_trailing(pos);
         match ev {
             Event::StreamStart => {}
             Event::StreamEnd => {
@@ -312,11 +372,10 @@ impl<'a> Composer<'a> {
                     .take()
                     .unwrap_or_else(|| Elem::new(Node::Scalar(Scalar::Null)));
                 let first = info.first;
-                let input = self.input.trim_start_matches('\u{FEFF}');
                 self.docs.push(Doc::from_parts(
                     root,
-                    first && input.starts_with(['\n', '\r']),
-                    self.input.contains('\r'),
+                    first && self.leading_blank,
+                    self.saw_cr,
                     info.version
                         .map(|(a, b)| (a.min(255) as u8, b.min(255) as u8)),
                     info.tags,
@@ -335,7 +394,7 @@ impl<'a> Composer<'a> {
                 let mut meta = Meta::default();
                 self.begin_node(span.start, false, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
-                meta.span = SourceSpan(Some(span));
+                meta.span = SourceSpan::from_span(span);
                 meta.style = Some(match style {
                     ScalarStyle::Plain => Style::Plain,
                     ScalarStyle::SingleQuoted => Style::SingleQuoted,
@@ -361,14 +420,17 @@ impl<'a> Composer<'a> {
                     meta.spelling = Some(raw);
                 }
                 let block_style = matches!(style, ScalarStyle::Literal | ScalarStyle::Folded);
-                if self.role() != Role::Key {
-                    let within = block_style.then_some(span.end.index);
-                    self.grab_trailing(&mut meta, span.end, within);
+                let was_key = self.role() == Role::Key;
+                if block_style && !was_key {
+                    self.header_comment(&mut meta, span);
                 }
                 self.complete(Elem {
                     node: Node::Scalar(scalar),
                     meta,
                 });
+                if !block_style {
+                    self.completed(was_key, span.end);
+                }
             }
             Event::Alias { name } => {
                 if !self.anchors.contains(name.as_ref()) {
@@ -381,21 +443,20 @@ impl<'a> Composer<'a> {
                 }
                 let mut meta = Meta::default();
                 self.begin_node(span.start, false, &mut meta);
-                meta.span = SourceSpan(Some(span));
-                if self.role() != Role::Key {
-                    self.grab_trailing(&mut meta, span.end, None);
-                }
+                meta.span = SourceSpan::from_span(span);
+                let was_key = self.role() == Role::Key;
                 self.complete(Elem {
                     node: Node::Alias(name.into_owned()),
                     meta,
                 });
+                self.completed(was_key, span.end);
             }
             Event::SequenceStart { anchor, tag, flow } => {
                 self.check_depth(span)?;
                 let mut meta = Meta::default();
                 self.begin_node(span.start, true, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
-                meta.span = SourceSpan(Some(span));
+                meta.span = SourceSpan::from_span(span);
                 meta.style = Some(if flow { Style::Flow } else { Style::Block });
                 self.stack.push(Frame::Seq(Elem {
                     node: Node::Seq(Vec::new()),
@@ -407,7 +468,7 @@ impl<'a> Composer<'a> {
                 let mut meta = Meta::default();
                 self.begin_node(span.start, true, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
-                meta.span = SourceSpan(Some(span));
+                meta.span = SourceSpan::from_span(span);
                 meta.style = Some(if flow { Style::Flow } else { Style::Block });
                 self.stack.push(Frame::Map {
                     elem: Elem {
@@ -424,15 +485,15 @@ impl<'a> Composer<'a> {
                     Some(Frame::Map { elem, .. }) => elem,
                     None => unreachable!("collection end without start"),
                 };
-                // Only a flow collection's end is a real position on its line.
+                // Only a flow collection's end is a real position on its
+                // line; a block collection ends where the next token starts.
                 let is_flow_end = span.end.index > span.start.index;
-                if let SourceSpan(Some(s)) = &mut elem.meta.span {
-                    s.end = span.end;
-                }
-                if is_flow_end && self.role() != Role::Key {
-                    self.grab_trailing(&mut elem.meta, span.end, None);
-                }
+                elem.meta.span.set_end(span.end.index);
+                let was_key = self.role() == Role::Key;
                 self.complete(elem);
+                if is_flow_end {
+                    self.completed(was_key, span.end);
+                }
             }
         }
         Ok(())

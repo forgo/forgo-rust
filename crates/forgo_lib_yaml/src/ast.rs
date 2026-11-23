@@ -210,10 +210,35 @@ pub enum Style {
     Flow,
 }
 
-/// Where a node was in the source. Always equal to any other `SourceSpan`,
-/// so documents compare by content and presentation, not by origin.
+/// The byte range a node had in its source, when it was parsed. Always
+/// equal to any other `SourceSpan`, so documents compare by content and
+/// presentation, not by origin. (Byte offsets only, to keep nodes small;
+/// line and column can be computed from the source text.)
 #[derive(Clone, Copy, Debug, Default)]
-pub struct SourceSpan(pub Option<crate::syntax::Span>);
+pub struct SourceSpan(Option<(u32, u32)>);
+
+impl SourceSpan {
+    pub(crate) fn from_span(span: crate::syntax::Span) -> Self {
+        match (
+            u32::try_from(span.start.index),
+            u32::try_from(span.end.index),
+        ) {
+            (Ok(s), Ok(e)) => SourceSpan(Some((s, e))),
+            _ => SourceSpan(None),
+        }
+    }
+
+    pub(crate) fn set_end(&mut self, end: usize) {
+        if let (Some((_, e)), Ok(end)) = (&mut self.0, u32::try_from(end)) {
+            *e = end;
+        }
+    }
+
+    /// The node's byte range in the source, if it was parsed.
+    pub fn range(&self) -> Option<std::ops::Range<usize>> {
+        self.0.map(|(s, e)| s as usize..e as usize)
+    }
+}
 
 impl PartialEq for SourceSpan {
     fn eq(&self, _: &Self) -> bool {

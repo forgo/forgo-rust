@@ -23,7 +23,7 @@ use std::time::Duration;
 
 /// Upper bound for mutated inputs whose re-parsed documents differ in
 /// presentation (ratchet: lower it when fixes land, never raise it).
-const MAX_PRESENTATION_DIFFS: usize = 61;
+const MAX_PRESENTATION_DIFFS: usize = 48;
 /// Report presentation differences as problems (for investigating them).
 const SHOW_PRESENTATION: bool = false;
 static PRESENTATION_DIFFS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
