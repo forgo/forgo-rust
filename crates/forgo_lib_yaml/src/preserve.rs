@@ -50,6 +50,10 @@ pub(crate) fn stream_text(docs: &[Doc]) -> Option<String> {
     if docs.iter().all(|d| d.origin.source.is_none()) {
         return None;
     }
+    // Untouched documents that make up a whole source: that source.
+    if let Some(text) = whole_source(docs) {
+        return Some(text.to_string());
+    }
     let mut out = String::new();
     let mut prev_from_source = false;
     for (i, d) in docs.iter().enumerate() {
@@ -91,6 +95,29 @@ pub(crate) fn stream_text(docs: &[Doc]) -> Option<String> {
     let docs: Vec<&Doc> = docs.iter().filter(|d| !d.is_placeholder()).collect();
     let ok = back.len() == docs.len() && docs.iter().zip(&back).all(|(d, b)| equivalent_doc(d, b));
     ok.then_some(out)
+}
+
+/// The source of `docs` when they are all of it, untouched and in order.
+fn whole_source(docs: &[Doc]) -> Option<&str> {
+    let first = docs.first()?.origin.source.as_ref()?;
+    let mut at = 0;
+    for d in docs {
+        let o = &d.origin;
+        let untouched = !o.touched
+            && d.yaml_version == o.yaml_version
+            && d.tag_handles == o.tag_handles
+            && d.explicit_start == o.explicit_start
+            && d.explicit_end == o.explicit_end;
+        let same = o
+            .source
+            .as_ref()
+            .is_some_and(|s| std::sync::Arc::ptr_eq(s, first));
+        if !untouched || !same || o.range.0 != at {
+            return None;
+        }
+        at = o.range.1;
+    }
+    (at == first.len()).then_some(&**first)
 }
 
 /// The first line that isn't blank or a comment.
