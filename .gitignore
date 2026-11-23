@@ -26,3 +26,7 @@ crates/forgo_lib_yaml/tests/yaml_test_suite/
 crates/forgo_lib_yaml/tests/test-failure-analysis/
 crates/forgo_lib_yaml/tests/failed_test_ids.txt
 crates/forgo_lib_yaml/tests/test-output.log
+# Scratch debug programs and their compiled binaries (never commit these)
+/test_*
+/debug_*
+crates/forgo_lib_yaml/test_*
