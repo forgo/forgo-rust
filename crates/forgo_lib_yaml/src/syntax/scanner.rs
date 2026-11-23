@@ -19,7 +19,7 @@ use super::chars::*;
 use super::event::{BlockHeader, Chomping, Mark, ScalarStyle};
 use crate::ast::Error;
 use std::borrow::Cow;
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::VecDeque;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum TokenKind<'a> {
@@ -113,13 +113,14 @@ pub(crate) struct Scanner<'a> {
     simple_key_allowed: bool,
     /// Index 0 is the block context, index i the flow level i.
     simple_keys: Vec<SimpleKey>,
-    /// Levels whose simple key is possible, and the subset that can go
-    /// stale (not in a flow mapping). Possible keys sit at increasing
-    /// positions and token numbers by level, so only the lowest ones ever
-    /// need checking: O(1) amortized work per candidate however deep the
-    /// nesting (a linear scan per token would be quadratic).
-    possible_levels: BTreeSet<usize>,
-    stale_levels: BTreeSet<usize>,
+    /// Levels whose simple key is possible, in increasing order, split by
+    /// whether the key can go stale (flow mapping keys can't). Possible keys
+    /// sit at increasing positions and token numbers by level, keys are only
+    /// set at the top level, and they are cleared at the top level or (when
+    /// stale) at the lowest: so these deques give O(1) amortized work per
+    /// candidate however deep the nesting, without allocating per token.
+    stale_levels: VecDeque<usize>,
+    exempt_levels: VecDeque<usize>,
     flows: Vec<FlowKind>,
     /// Kind and end of the last token produced (for separation checks).
     last_kind: LastToken,
@@ -161,8 +162,8 @@ impl<'a> Scanner<'a> {
             indents: Vec::new(),
             simple_key_allowed: false,
             simple_keys: vec![SimpleKey::NONE],
-            possible_levels: BTreeSet::new(),
-            stale_levels: BTreeSet::new(),
+            stale_levels: VecDeque::new(),
+            exempt_levels: VecDeque::new(),
             flows: Vec::new(),
             last_kind: LastToken::Boundary,
             last_end: 0,
@@ -225,7 +226,103 @@ impl<'a> Scanner<'a> {
     /// The character `n` characters ahead.
     #[inline]
     fn ch_at(&self, n: usize) -> Option<char> {
+        if n == 1
+            && self
+                .bytes
+                .get(self.mark.index)
+                .is_some_and(|b| b.is_ascii())
+        {
+            let i = self.mark.index + 1;
+            let b = *self.bytes.get(i)?;
+            return if b.is_ascii() {
+                Some(b as char)
+            } else {
+                self.src[i..].chars().next()
+            };
+        }
         self.src[self.mark.index..].chars().nth(n)
+    }
+
+    /// Advance over `nb-char`s up to a line break or the end of input
+    /// (printable ASCII fast path).
+    fn skip_to_break(&mut self) -> Res<()> {
+        let bytes = self.bytes;
+        let (mut i, mut col) = (self.mark.index, self.mark.col);
+        loop {
+            match bytes.get(i) {
+                None | Some(b'\n' | b'\r') => break,
+                Some(&b) if b == b'\t' || (0x20..0x7F).contains(&b) => {
+                    i += 1;
+                    col += 1;
+                }
+                Some(&b) if b < 0x80 => {
+                    self.mark.index = i;
+                    self.mark.col = col;
+                    return Err(self.err_here(format!("invalid character U+{b:04X}")));
+                }
+                Some(_) => {
+                    let c = self.src[i..].chars().next().unwrap_or('\0');
+                    if !is_nb_char(c) {
+                        self.mark.index = i;
+                        self.mark.col = col;
+                        return Err(self.err_here(format!("invalid character U+{:04X}", c as u32)));
+                    }
+                    i += c.len_utf8();
+                    col += 1;
+                }
+            }
+        }
+        self.mark.index = i;
+        self.mark.col = col;
+        Ok(())
+    }
+
+    /// Advance over one run of plain-scalar characters: up to white space,
+    /// a line break, a `:` that ends the scalar, or (in flow context) a
+    /// flow indicator. Returns whether anything was consumed.
+    fn plain_run(&mut self, flow: bool) -> Res<bool> {
+        let bytes = self.bytes;
+        let start = self.mark.index;
+        let (mut i, mut col) = (self.mark.index, self.mark.col);
+        let ends_scalar = |b: Option<&u8>| match b {
+            None | Some(b' ' | b'\t' | b'\n' | b'\r') => true,
+            Some(b',' | b'[' | b']' | b'{' | b'}') => flow,
+            _ => false,
+        };
+        loop {
+            let Some(&b) = bytes.get(i) else { break };
+            match b {
+                b' ' | b'\t' | b'\n' | b'\r' => break,
+                b',' | b'[' | b']' | b'{' | b'}' if flow => break,
+                b':' if ends_scalar(bytes.get(i + 1)) => break,
+                0x21..=0x7E => {
+                    i += 1;
+                    col += 1;
+                }
+                0x80.. => {
+                    let c = self.src[i..].chars().next().unwrap_or('\0');
+                    if !is_ns_char(c) {
+                        self.mark.index = i;
+                        self.mark.col = col;
+                        return Err(if c == '\u{FEFF}' {
+                            self.err_here("a byte order mark can't appear in a plain scalar")
+                        } else {
+                            self.err_here(format!("invalid character U+{:04X}", c as u32))
+                        });
+                    }
+                    i += c.len_utf8();
+                    col += 1;
+                }
+                _ => {
+                    self.mark.index = i;
+                    self.mark.col = col;
+                    return Err(self.err_here(format!("invalid character U+{b:04X}")));
+                }
+            }
+        }
+        self.mark.index = i;
+        self.mark.col = col;
+        Ok(i > start)
     }
 
     #[inline]
@@ -343,15 +440,22 @@ impl<'a> Scanner<'a> {
     // ------------------------------------------------------------------
 
     fn fetch_more_tokens(&mut self) -> Res<()> {
+        // Common case: a token is queued and no implicit key is pending.
+        if !self.tokens.is_empty() && self.stale_levels.is_empty() && self.exempt_levels.is_empty()
+        {
+            return Ok(());
+        }
         loop {
             let mut need_more = self.tokens.is_empty();
             if !need_more {
                 self.stale_simple_keys()?;
                 // The lowest possible key has the smallest token number.
-                need_more = self
-                    .possible_levels
-                    .first()
-                    .is_some_and(|&l| self.simple_keys[l].token_number == self.tokens_parsed);
+                let lowest = match (self.stale_levels.front(), self.exempt_levels.front()) {
+                    (Some(&a), Some(&b)) => Some(a.min(b)),
+                    (a, b) => a.or(b).copied(),
+                };
+                need_more =
+                    lowest.is_some_and(|l| self.simple_keys[l].token_number == self.tokens_parsed);
             }
             if !need_more {
                 return Ok(());
@@ -598,7 +702,7 @@ impl<'a> Scanner<'a> {
     /// context and flow sequences a key must be on one line and at most
     /// 1024 characters long. Keys in flow mappings have neither limit.
     fn stale_simple_keys(&mut self) -> Res<()> {
-        while let Some(&level) = self.stale_levels.first() {
+        while let Some(&level) = self.stale_levels.front() {
             let k = self.simple_keys[level];
             if k.mark.line < self.mark.line || self.mark.col > k.mark.col + 1024 {
                 if k.required {
@@ -616,22 +720,40 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
+    /// Set the top level's key (keys are only ever set at the top level).
     fn set_key(&mut self, level: usize, key: SimpleKey) {
         self.clear_key(level);
         self.simple_keys[level] = key;
         if key.possible {
-            self.possible_levels.insert(level);
-            if !self.in_flow_mapping(level) {
-                self.stale_levels.insert(level);
+            if self.in_flow_mapping(level) {
+                self.exempt_levels.push_back(level);
+            } else {
+                self.stale_levels.push_back(level);
             }
         }
     }
 
+    /// Clear a level's key: the top level, or the lowest stale one.
     fn clear_key(&mut self, level: usize) {
-        if self.simple_keys[level].possible {
-            self.simple_keys[level].possible = false;
-            self.possible_levels.remove(&level);
-            self.stale_levels.remove(&level);
+        if !self.simple_keys[level].possible {
+            return;
+        }
+        self.simple_keys[level].possible = false;
+        let deque = if self.in_flow_mapping(level) {
+            &mut self.exempt_levels
+        } else {
+            &mut self.stale_levels
+        };
+        if deque.back() == Some(&level) {
+            deque.pop_back();
+        } else if deque.front() == Some(&level) {
+            deque.pop_front();
+        } else {
+            debug_assert!(
+                false,
+                "simple keys are cleared at the top or the stale front"
+            );
+            deque.retain(|&l| l != level);
         }
     }
 
@@ -1244,15 +1366,7 @@ impl<'a> Scanner<'a> {
             trailing_breaks.clear();
             leading_blank = self.at_blank();
             let line_start = self.mark.index;
-            while let Some(c) = self.ch() {
-                if is_break(c) {
-                    break;
-                }
-                if !is_nb_char(c) {
-                    return Err(self.err_here(format!("invalid character U+{:04X}", c as u32)));
-                }
-                self.advance();
-            }
+            self.skip_to_break()?;
             string.push_str(&self.src[line_start..self.mark.index]);
             end = self.mark;
             if self.is_z() {
@@ -1428,6 +1542,36 @@ impl<'a> Scanner<'a> {
             }
             let mut leading_blanks = false;
             while let Some(c) = self.ch() {
+                // Fast path: a run of ordinary characters (no quote, escape,
+                // white space or control character).
+                let run_start = self.mark.index;
+                let (mut i, mut cols) = (run_start, 0usize);
+                while let Some(&b) = self.bytes.get(i) {
+                    let ordinary = match b {
+                        b'\'' => !single,
+                        b'"' | b'\\' => single,
+                        0x21..=0x7E | 0xC0.. => true,
+                        0x80..=0xBF => {
+                            // UTF-8 continuation byte: same character.
+                            i += 1;
+                            continue;
+                        }
+                        _ => false,
+                    };
+                    if !ordinary {
+                        break;
+                    }
+                    i += 1;
+                    cols += 1;
+                }
+                if i > run_start {
+                    if let Some(buf) = owned.as_mut() {
+                        buf.push_str(&self.src[run_start..i]);
+                    }
+                    self.mark.index = i;
+                    self.mark.col += cols;
+                    continue;
+                }
                 if is_blank(c) || is_break(c) {
                     break;
                 }
@@ -1642,29 +1786,11 @@ impl<'a> Scanner<'a> {
             if self.byte_at(0) == Some(b'#') {
                 break;
             }
-            while let Some(c) = self.ch() {
-                if is_blank(c) || is_break(c) {
-                    break;
-                }
-                if c == ':' {
-                    let ends = match self.ch_at(1) {
-                        None => true,
-                        Some(n) => is_blank(n) || is_break(n) || (flow && is_flow_indicator(n)),
-                    };
-                    if ends {
-                        break;
-                    }
-                } else if flow && is_flow_indicator(c) {
-                    break;
-                }
-                if !is_ns_char(c) {
-                    if c == '\u{FEFF}' {
-                        return Err(
-                            self.err_here("a byte order mark can't appear in a plain scalar")
-                        );
-                    }
-                    return Err(self.err_here(format!("invalid character U+{:04X}", c as u32)));
-                }
+            // A run of plain characters; pending white space or line breaks
+            // join it to the text so far.
+            let run_start = self.mark.index;
+            if self.plain_run(flow)? {
+                let run_end = self.mark;
                 if leading_blanks {
                     let buf =
                         owned.get_or_insert_with(|| self.src[start.index..end.index].to_string());
@@ -1682,14 +1808,12 @@ impl<'a> Scanner<'a> {
                 } else if let Some(ws) = whitespaces_start.take()
                     && let Some(buf) = owned.as_mut()
                 {
-                    buf.push_str(&self.src[ws..self.mark.index]);
+                    buf.push_str(&self.src[ws..run_start]);
                 }
-                let c_start = self.mark.index;
-                self.advance();
                 if let Some(buf) = owned.as_mut() {
-                    buf.push_str(&self.src[c_start..self.mark.index]);
+                    buf.push_str(&self.src[run_start..run_end.index]);
                 }
-                end = self.mark;
+                end = run_end;
             }
 
             if !(self.at_blank() || self.at_break()) {
