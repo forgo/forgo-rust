@@ -42,6 +42,12 @@ description = "Run clippy to catch common mistakes, treating warnings as errors"
 command = "cargo"
 args = ["clippy", "-p", "${@}", "--", "-D", "warnings"]
 
+[tasks.doc-check-project]
+description = "Build a project's documentation, treating warnings (such as broken links) as errors"
+command = "cargo"
+args = ["doc", "-p", "${@}", "--no-deps"]
+env = { RUSTDOCFLAGS = "-D warnings" }
+
 [tasks.test]
 description = "Run all tests across the workspace"
 command = "cargo"

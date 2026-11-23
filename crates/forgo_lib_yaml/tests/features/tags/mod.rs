@@ -1,0 +1,3 @@
+//! Tag tests
+
+mod tags;

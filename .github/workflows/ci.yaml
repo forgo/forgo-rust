@@ -11,7 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ["forgo_lib_cli", "forgo"]
+        project:
+          - forgo
+          - forgo_lib_cli
+          - forgo_lib_yaml
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,16 +24,40 @@ jobs:
         run: cargo make fmt-check-project ${{ matrix.project }}
       - name: Run clippy check
         run: cargo make clippy-check-project ${{ matrix.project }}
+      - name: Run documentation check
+        run: cargo make doc-check-project ${{ matrix.project }}
+
+  msrv:
+    # forgo_lib_yaml declares a minimum supported Rust version
+    # (`rust-version` in its Cargo.toml); make sure it still builds there.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Build forgo_lib_yaml with its minimum supported Rust version
+        run: |
+          msrv=$(grep -m1 '^rust-version' crates/forgo_lib_yaml/Cargo.toml | cut -d '"' -f 2)
+          rustup toolchain install "$msrv" --profile minimal
+          cargo +"$msrv" check -p forgo_lib_yaml
 
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ["forgo_lib_cli", "forgo"]
+        project:
+          - forgo
+          - forgo_lib_cli
+          - forgo_lib_yaml
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Rust setup
         uses: ./.github/actions/setup-rust
+      - name: Fetch the official YAML test suite
+        if: matrix.project == 'forgo_lib_yaml'
+        run: crates/forgo_lib_yaml/scripts/fetch-yaml-test-suite.sh
       - name: Run tests for ${{ matrix.project }}
         run: cargo make test-project ${{ matrix.project }}
+        env:
+          # The YAML compliance tests fail instead of skipping without the suite.
+          YAML_TEST_SUITE_REQUIRED: "1"

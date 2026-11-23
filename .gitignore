@@ -15,3 +15,26 @@ target/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+.DS_Store
+
+# Official yaml-test-suite data release (fetched, not committed)
+# To set up: crates/forgo_lib_yaml/scripts/fetch-yaml-test-suite.sh
+crates/forgo_lib_yaml/tests/yaml-test-suite-data/
+
+# Scratch debug programs and their compiled binaries (never commit these)
+/test_*
+/debug_*
+crates/forgo_lib_yaml/test_*
+
+# Local secrets and environment files (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local tool state and personal settings
+.claude/settings.local.json
+.claude/.cc-writes/
+.idea/

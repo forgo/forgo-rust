@@ -1,0 +1,4 @@
+# Known failures of gated checks, one `ID[/NN]:check` per line
+# (check = error | events | json | coverage | roundtrip | presentation). The yaml_test_suite test fails when a
+# gated check fails for a case not listed here, or when a listed case
+# passes, so this list can only shrink. Comments start with `#`.
