@@ -289,8 +289,7 @@ impl<'a> Scanner<'a> {
             Some(b',' | b'[' | b']' | b'{' | b'}') => flow,
             _ => false,
         };
-        loop {
-            let Some(&b) = bytes.get(i) else { break };
+        while let Some(&b) = bytes.get(i) {
             match b {
                 b' ' | b'\t' | b'\n' | b'\r' => break,
                 b',' | b'[' | b']' | b'{' | b'}' if flow => break,
