@@ -13,23 +13,6 @@
 
 use forgo_lib_yaml::{Doc, Seg, normalize_string_list};
 
-fn normalize_indent(s: &str) -> String {
-    s.lines()
-        .map(|l| l.trim_start())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Accept single- or double-quoted items, and no indentation.
-fn has_quoted_item(norm: &str, val: &str) -> bool {
-    norm.contains(&format!(r#"- "{}""#, val)) || norm.contains(&format!("- '{}'", val))
-}
-
-/// Accept a bare list line "- val" regardless of whether there's a trailing '\n'.
-fn has_bare_item(norm: &str, val: &str) -> bool {
-    norm.lines().any(|l| l.trim_start() == format!("- {}", val))
-}
-
 #[test]
 fn normalize_list_with_typed_values() {
     let mut d = Doc::from_str(

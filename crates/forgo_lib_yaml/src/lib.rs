@@ -1,13 +1,6 @@
 // crates/forgo_lib_yaml/src/lib.rs
-//! forgo_lib_yaml: A tiny, zero-dependency YAML subset parser/editor tailored for CI/config editing.
-//!
-//! Goals:
-//! - Deterministic round-trips for supported subset
-//! - Small, auditable code
-//! - Editor API: visit by path (with wildcards) + normalize sequences (sort/dedup)
-//!
-//! Non-goals (initially): full YAML 1.2, anchors/tags, block scalars (|/>), comments preservation.
-//! Extend incrementally in lexer/parser/emitter where marked by `// EXTEND:`.
+#![doc = include_str!("../README.md")]
+#![forbid(unsafe_code)]
 
 mod ast;
 mod compose;

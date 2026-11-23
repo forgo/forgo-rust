@@ -1,165 +1,33 @@
-# YAML Library Tests
+# forgo_lib_yaml tests
 
-Comprehensive test suite for `forgo_lib_yaml` ensuring YAML 1.2.2 compliance.
-
-## Quick Start
-
-```bash
-# Run all tests
-cargo test
-
-# Run specific test suites
-cargo test --test api_tests           # Public API tests (161)
-cargo test --test feature_tests       # Feature tests (38)
-cargo test --test integration_tests   # Integration tests (16)
-cargo test --test regression_tests    # Regression/fuzz tests (13)
-cargo test --test unit_tests          # Unit tests (58)
-cargo test --test yaml_spec_1_2_2     # YAML 1.2.2 spec tests (671)
-cargo test --test yaml_test_suite_official  # Official test suite (351)
+```sh
+scripts/fetch-yaml-test-suite.sh   # official suite data (pinned), once
+cargo test -p forgo_lib_yaml
 ```
 
-## Test Status
+## Compliance
 
-| Suite | Tests | Status |
-|-------|-------|--------|
-| API Tests | 161 | ✅ 161 passing |
-| Feature Tests | 43 | ✅ 43 passing |
-| Integration Tests | 16 | ✅ 16 passing |
-| Unit Tests | 58 | ✅ 58 passing |
-| Regression Tests | 13 | ⚠️ 12 passing, 1 failing |
-| **YAML 1.2.2 Spec** | **671** | **✅ 671 passing (100%)** |
-| **Official Suite** | **363** | **⚠️ 233 passing (64.2%)** |
-| **Internal Total** | **962** | **961 ✅ / 1 ⚠️** |
+| target | what it checks |
+|--------|----------------|
+| `yaml_test_suite` | The official [yaml-test-suite](https://github.com/yaml/yaml-test-suite) data release `data-2022-01-17` (402 cases). For each case it checks the error expectation, the exact event stream (`test.event`), the JSON value (`in.json`), byte coverage, the normalized round trip, and presentation (the re-parsed `Doc` is equal). All six checks are gated by `yaml_test_suite/known_failures.txt` (empty). The report goes to `target/tmp/yaml-test-suite-report.md`. |
+| `yaml_spec_gaps` | YAML 1.2.2 rules the suite doesn't test: encodings and BOMs, CR/CRLF, NEL/LS/PS, spec examples missing from the suite, version directives, implicit key length, plus the decisions listed in [COMPLIANCE.md](../COMPLIANCE.md). Expected events are hand-derived from the spec. |
+| `yaml_robustness` | ~970k truncated and mutated suite inputs. Checks: no panics or hangs, the parser and composer agree, full coverage, content-preserving re-emission (presentation as a ratchet), and the nesting-depth limit. |
 
-**YAML 1.2.2 Compliance: 100%** (671/671 spec tests passing)
-**Official Test Suite: 64.2%** (233/363 passing, 78 failing, 52 skipped)
+Without the suite data these tests skip loudly, or fail when `CI` or
+`YAML_TEST_SUITE_REQUIRED` is set. The `yaml_test_suite/` directory holds the
+harness's helpers: a JSON reader, `Doc` → JSON conversion, and the
+style-independent event normalizer.
 
-> **Detailed Failures:** See [OFFICIAL_TEST_FAILURES.md](OFFICIAL_TEST_FAILURES.md) for complete analysis of all 78 failing tests with error messages and input YAML.
+## Behaviour
 
-## Test Organization
+| target | tests | scope |
+|--------|------:|-------|
+| `api_tests` | 161 | constructors, accessors, builders, paths |
+| `feature_tests` | 45 | anchors, block scalars, comments, document streams, flow style, quoting, schemas, tags |
+| `integration_tests` | 16 | editing workflows and AST round trips |
+| `regression_tests` | 13 | reproductions and a property-based round trip |
+| `unit_tests` | 58 | scanner errors, document markers, emitter details |
+| `yaml_spec_1_2_2` | 671 | self-authored tests organized by spec chapter (`spec/ch_*.rs`); `Fixture`s check that parse → emit → parse is stable and gives an equal document |
 
-```
-tests/
-├── api/              # Public API surface tests
-├── features/         # Feature-based tests (comments, tags, etc.)
-├── integration/      # End-to-end integration tests
-├── regression/       # Bug prevention and fuzz tests
-├── spec/             # YAML 1.2.2 specification tests
-├── unit/             # Component unit tests (lexer, parser, emitter)
-└── yaml_test_suite/  # Official YAML test suite (external)
-```
-
-### API Tests (`api/`)
-Tests for the public API ensuring stability and usability.
-- Builders and constructors
-- Type guards and accessors
-- Convenience methods
-
-### Feature Tests (`features/`)
-Organized by YAML feature, spanning multiple spec sections:
-- Anchors & aliases
-- Block scalars
-- Comments
-- Document streams
-- Flow style
-- Quoting
-- Schemas
-- Tags
-
-### Integration Tests (`integration/`)
-End-to-end validation of real-world usage:
-- AST manipulation
-- Editor operations
-- Round-trip stability
-
-### Regression Tests (`regression/`)
-Prevent known bugs from recurring:
-- Property-based tests
-- Fuzz testing
-- Historical bug reproductions
-
-### Spec Tests (`spec/`)
-Systematic YAML 1.2.2 compliance tracking:
-- One file per spec chapter (ch_2 through ch_10)
-- Direct traceability to spec sections
-- Comprehensive coverage of all requirements
-
-### Unit Tests (`unit/`)
-Component-level testing:
-- Lexer edge cases
-- Parser specifics
-- Emitter behavior
-
-## Running Official YAML Test Suite
-
-The official test suite validates against 363 community-maintained test cases.
-
-```bash
-# Run the official test suite (generates detailed failure report)
-cargo test --test yaml_test_suite_official -- --nocapture
-
-# Or use Docker (if local clone not available)
-./tests/run-official-tests-docker.sh
-```
-
-**Output Files:**
-- `OFFICIAL_TEST_FAILURES.md` - Detailed report with error messages and YAML input for each failure
-- `failed_test_ids.txt` - List of failing test IDs for quick reference
-
-## Test Output Format
-
-All test failures include:
-- Test name and location
-- Input YAML
-- Expected vs actual output
-- Spec section reference (for spec tests)
-
-Example output:
-```
----- spec::ch_7_flow_styles::ch_7_4_1_05_flow_sequence_empty stdout ----
-Fixture failed: 7.4.1 test 5 - Empty flow sequence
-Input YAML:
-"[]"
-Error: <description>
-Location: tests/spec/ch_7_flow_styles.rs:142
-```
-
-## Adding Tests
-
-### Spec Test
-```rust
-#[test]
-fn ch_X_Y_ZZ_description() {
-    Fixture::new(
-        "X.Y",       // Spec section
-        ZZ,           // Test number
-        "Description",
-        "yaml: input\n",
-    )
-    .run();
-}
-```
-
-### Feature Test
-```rust
-#[test]
-fn descriptive_test_name() {
-    let doc = parse("yaml: here").unwrap();
-    assert_eq!(/* validation */);
-}
-```
-
-## Known Issues
-
-### Failing Tests
-- `regression::proptest_yaml::prop_roundtrip_parse_emit_parse` - Complex key roundtrip edge case
-
-## Documentation Cleanup
-
-This directory previously contained extensive documentation (AUDIT.md, COMPLIANCE.md, DOCKER_*.md, etc.).
-These have been archived as they became outdated. This README is now the single source of truth for testing.
-
-If you need historical context, check git history for:
-- Test failure analysis
-- Compliance tracking
-- Docker setup guides
+`common/` holds the `Fixture` helper. The `spec/` tests are written for this
+crate; the official suite above is the compliance reference.

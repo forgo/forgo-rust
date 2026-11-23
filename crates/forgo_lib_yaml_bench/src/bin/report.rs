@@ -114,7 +114,7 @@ fn table(title: &str, parsers: &[(&'static str, Adapter)]) {
 }
 
 /// Accept/reject agreement with the suite (not event equality).
-fn compliance(parsers: &[(&'static str, Adapter)]) {
+fn compliance(title: &str, parsers: &[(&'static str, Adapter)]) {
     let root =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../forgo_lib_yaml/tests/yaml-test-suite-data");
     let mut cases = Vec::new();
@@ -145,7 +145,7 @@ fn compliance(parsers: &[(&'static str, Adapter)]) {
     let valid = cases.iter().filter(|c| !c.1).count();
     let invalid = cases.len() - valid;
     println!(
-        "\n## yaml-test-suite accept/reject ({} cases)\n",
+        "\n## yaml-test-suite accept/reject, {title} ({} cases)\n",
         cases.len()
     );
     println!("| parser | valid accepted (of {valid}) | invalid rejected (of {invalid}) | total |");
@@ -172,6 +172,6 @@ fn main() {
     table("Event parsing", EVENT_PARSERS);
     table("Loading documents", LOADERS);
     std::panic::set_hook(Box::new(|_| {}));
-    compliance(EVENT_PARSERS);
-    compliance(LOADERS);
+    compliance("event parsers", EVENT_PARSERS);
+    compliance("loaders", LOADERS);
 }

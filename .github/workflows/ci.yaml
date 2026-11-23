@@ -38,5 +38,11 @@ jobs:
         uses: actions/checkout@v4
       - name: Rust setup
         uses: ./.github/actions/setup-rust
+      - name: Fetch the official YAML test suite
+        if: matrix.project == 'forgo_lib_yaml'
+        run: crates/forgo_lib_yaml/scripts/fetch-yaml-test-suite.sh
       - name: Run tests for ${{ matrix.project }}
         run: cargo make test-project ${{ matrix.project }}
+        env:
+          # The YAML compliance tests fail instead of skipping without the suite.
+          YAML_TEST_SUITE_REQUIRED: "1"
