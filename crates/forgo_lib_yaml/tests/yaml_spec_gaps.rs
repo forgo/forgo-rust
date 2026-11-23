@@ -7,6 +7,9 @@
 
 use forgo_lib_yaml::syntax::test_event::to_test_event;
 
+#[path = "yaml_test_suite/normalize.rs"]
+mod normalize;
+
 enum Expect {
     Events(&'static str),
     Error,
@@ -26,12 +29,34 @@ fn check(name: &str, input: &[u8], expect: Expect) -> Option<String> {
     match (expect, got) {
         (Expect::Events(exp), Ok(got)) => {
             let exp = exp.trim();
-            (got != exp).then(|| format!("{name}: expected\n{exp}\n--- got\n{got}"))
+            if got != exp {
+                return Some(format!("{name}: expected\n{exp}\n--- got\n{got}"));
+            }
+            roundtrip(name, input)
         }
         (Expect::Events(_), Err(e)) => Some(format!("{name}: unexpected error: {e}")),
         (Expect::Error, Ok(got)) => Some(format!("{name}: expected an error, got\n{got}")),
         (Expect::Error, Err(_)) => None,
     }
+}
+
+/// Parse → emit → parse must keep the content (normalized events).
+fn roundtrip(name: &str, input: &[u8]) -> Option<String> {
+    let text = match forgo_lib_yaml::syntax::input::decode(input) {
+        Ok(t) => t,
+        Err(e) => return Some(format!("{name}: decode failed: {e}")),
+    };
+    let emitted = match forgo_lib_yaml::Doc::from_stream(&text)
+        .and_then(|docs| forgo_lib_yaml::Doc::to_stream_string(&docs))
+    {
+        Ok(out) => out,
+        Err(e) => return Some(format!("{name}: compose/emit failed: {e}")),
+    };
+    let a = normalize::normalized_events(&text);
+    let b = normalize::normalized_events(&emitted);
+    (a != b).then(|| {
+        format!("{name}: round trip changed content\n{a:?}\n--- emitted {emitted:?}\n{b:?}")
+    })
 }
 
 fn utf16(s: &str, le: bool, bom: bool) -> Vec<u8> {

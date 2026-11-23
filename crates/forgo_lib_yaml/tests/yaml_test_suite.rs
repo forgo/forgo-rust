@@ -7,7 +7,9 @@
 //! - `events`: the event stream equals `test.event` (valid cases);
 //! - `json`:   the composed documents equal `in.json` (valid cases that have one);
 //! - `coverage`: every input byte outside tokens and comments is white space
-//!   (valid cases), so the scanner can't silently drop content.
+//!   (valid cases), so the scanner can't silently drop content;
+//! - `roundtrip`: parse → emit → parse keeps the content: the normalized
+//!   event streams (types, values, tags, anchors; no styles) are equal.
 //!
 //! Checks listed in [`GATED`] fail this test when a failure is missing from
 //! `yaml_test_suite/known_failures.txt`, or when a listed failure passes, so
@@ -22,6 +24,8 @@
 mod doc_json;
 #[path = "yaml_test_suite/json.rs"]
 mod json;
+#[path = "yaml_test_suite/normalize.rs"]
+mod normalize;
 
 use json::Json;
 use std::collections::BTreeSet;
@@ -41,10 +45,17 @@ enum Check {
     Events,
     Json,
     Coverage,
+    RoundTrip,
 }
 
 impl Check {
-    const ALL: [Check; 4] = [Check::Error, Check::Events, Check::Json, Check::Coverage];
+    const ALL: [Check; 5] = [
+        Check::Error,
+        Check::Events,
+        Check::Json,
+        Check::Coverage,
+        Check::RoundTrip,
+    ];
 
     fn name(self) -> &'static str {
         match self {
@@ -52,6 +63,7 @@ impl Check {
             Check::Events => "events",
             Check::Json => "json",
             Check::Coverage => "coverage",
+            Check::RoundTrip => "roundtrip",
         }
     }
 
@@ -60,9 +72,14 @@ impl Check {
     }
 }
 
-/// Checks that gate this test. The JSON check joins once the composer
-/// replaces the legacy parser (Phase 2).
-const GATED: &[Check] = &[Check::Error, Check::Events, Check::Json, Check::Coverage];
+/// Checks that gate this test.
+const GATED: &[Check] = &[
+    Check::Error,
+    Check::Events,
+    Check::Json,
+    Check::Coverage,
+    Check::RoundTrip,
+];
 
 /// What is under test, for the report header.
 const SUBJECT: &str = "event core (`forgo_lib_yaml::events`) for error/events/coverage; legacy `Doc::from_stream` for json";
@@ -151,6 +168,7 @@ struct Run {
     events: Option<Result<Vec<String>, EventsError>>,
     json: Option<Result<Vec<Json>, String>>,
     coverage: Option<Result<(), String>>,
+    roundtrip: Option<Result<(), String>>,
 }
 
 fn run_subject(yaml: Vec<u8>) -> Run {
@@ -165,6 +183,7 @@ fn run_subject(yaml: Vec<u8>) -> Run {
                 events: Some(Err((Vec::new(), msg.clone()))),
                 json: Some(Err(msg)),
                 coverage: None,
+                roundtrip: None,
             };
         }
     };
@@ -199,7 +218,12 @@ fn run_subject(yaml: Vec<u8>) -> Run {
         Some(e) => (Err(e.clone()), Err((lines, e)), None),
     };
 
-    let json = match forgo_lib_yaml::Doc::from_stream(&text) {
+    let docs = forgo_lib_yaml::Doc::from_stream(&text);
+    let roundtrip = match (&docs, &accepted) {
+        (Ok(docs), Ok(())) => Some(check_roundtrip(&text, docs)),
+        _ => None,
+    };
+    let json = match docs {
         Ok(docs) => doc_json::docs_to_json(&docs),
         Err(e) => Err(e.to_string()),
     };
@@ -209,7 +233,25 @@ fn run_subject(yaml: Vec<u8>) -> Run {
         events: Some(events),
         json: Some(json),
         coverage,
+        roundtrip,
     }
+}
+
+/// Emit `docs` and parse the output again; the content must be unchanged.
+fn check_roundtrip(text: &str, docs: &[forgo_lib_yaml::Doc]) -> Result<(), String> {
+    let emitted =
+        forgo_lib_yaml::Doc::to_stream_string(docs).map_err(|e| format!("emit failed: {e}"))?;
+    let original = normalize::normalized_events(text).map_err(|e| format!("input: {e}"))?;
+    let again = normalize::normalized_events(&emitted)
+        .map_err(|e| format!("emitted output doesn't parse ({e}): {emitted:?}"))?;
+    if original == again {
+        return Ok(());
+    }
+    let refs: Vec<&str> = original.iter().map(String::as_str).collect();
+    Err(format!(
+        "{}; emitted {emitted:?}",
+        first_difference(&refs, &again)
+    ))
 }
 
 enum Outcome<T> {
@@ -281,7 +323,7 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 struct Results {
-    tallies: [Tally; 4],
+    tallies: [Tally; 5],
     /// Error cases where `test.event` is a prefix of our events before the error.
     error_pos_agree: usize,
     error_pos_checked: usize,
@@ -354,6 +396,16 @@ fn evaluate(cases: &[Case]) -> Results {
             }
         }
 
+        // roundtrip
+        if !case.error {
+            let t = &mut r.tallies[Check::RoundTrip as usize];
+            match &run.roundtrip {
+                None => t.not_run += 1,
+                Some(Ok(())) => t.pass.push(case.id.clone()),
+                Some(Err(e)) => t.fail.push((case.id.clone(), e.clone())),
+            }
+        }
+
         // json
         if let (false, Some(text)) = (case.error, &case.json) {
             let expected = json::parse_many(text)
@@ -402,6 +454,9 @@ fn fail_all(r: &mut Results, case: &Case, detail: &str) {
     }
     if !case.error {
         r.tallies[Check::Coverage as usize]
+            .fail
+            .push((case.id.clone(), detail.to_string()));
+        r.tallies[Check::RoundTrip as usize]
             .fail
             .push((case.id.clone(), detail.to_string()));
     }
