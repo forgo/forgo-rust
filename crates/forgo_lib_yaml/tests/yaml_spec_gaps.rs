@@ -54,9 +54,15 @@ fn roundtrip(name: &str, input: &[u8]) -> Option<String> {
     };
     let a = normalize::normalized_events(&text);
     let b = normalize::normalized_events(&emitted);
-    (a != b).then(|| {
-        format!("{name}: round trip changed content\n{a:?}\n--- emitted {emitted:?}\n{b:?}")
-    })
+    if a != b {
+        return Some(format!(
+            "{name}: round trip changed content\n{a:?}\n--- emitted {emitted:?}\n{b:?}"
+        ));
+    }
+    // Presentation: the re-parsed documents are equal, styles included.
+    let docs = forgo_lib_yaml::Doc::from_stream(&text).ok()?;
+    let again = forgo_lib_yaml::Doc::from_stream(&emitted).ok()?;
+    (docs != again).then(|| format!("{name}: re-parsed documents differ; emitted {emitted:?}"))
 }
 
 fn utf16(s: &str, le: bool, bom: bool) -> Vec<u8> {

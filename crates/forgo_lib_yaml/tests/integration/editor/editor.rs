@@ -69,21 +69,25 @@ jobs:
     let out = d.to_string().unwrap();
     // alpha + sorted list (spacing-insensitive)
     let norm = normalize_indent(&out);
+    // x was a flow list and stays one; y was a block list and stays one.
     assert!(
-        // x: [forgo, tooling] -> alpha + sorted
-        norm.contains("project:\n- alpha\n- forgo\n- tooling\n")
-            // y: [forgo_lib_cli, forgo] -> alpha + sorted (ASCII puts "forgo" before "forgo_lib_cli")
-            || norm.contains("project:\n- alpha\n- forgo\n- forgo_lib_cli\n")
-            // (If comparator changes, this still allows the alternative order)
-            || norm.contains("project:\n- alpha\n- forgo_lib_cli\n- forgo\n"),
+        norm.contains("project: [alpha, forgo, tooling]\n"),
         "unexpected YAML output:\n{out}"
     );
-    // both matrices should have gained "alpha"
-    assert_eq!(
-        norm.matches("\n- alpha\n").count(),
-        2,
+    assert!(
+        // ASCII order puts "forgo" before "forgo_lib_cli"
+        norm.contains("project:\n- alpha\n- forgo\n- forgo_lib_cli"),
         "unexpected YAML output:\n{out}"
     );
+    // both matrices should have gained "alpha" (one flow, one block list)
+    let back = Doc::from_str(&out).unwrap();
+    let mut seen = 0;
+    let mut probe = back.clone();
+    probe.visit_sequences_mut(path, |seq| {
+        seen += usize::from(seq.iter().any(|e| e.node().as_str() == Some("alpha")));
+        false
+    });
+    assert_eq!(seen, 2, "unexpected YAML output:\n{out}");
 }
 
 #[test]

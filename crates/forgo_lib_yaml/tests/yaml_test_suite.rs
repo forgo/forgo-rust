@@ -9,7 +9,9 @@
 //! - `coverage`: every input byte outside tokens and comments is white space
 //!   (valid cases), so the scanner can't silently drop content;
 //! - `roundtrip`: parse → emit → parse keeps the content: the normalized
-//!   event streams (types, values, tags, anchors; no styles) are equal.
+//!   event streams (types, values, tags, anchors; no styles) are equal;
+//! - `presentation`: parse → emit → parse gives an equal `Doc` (comments,
+//!   styles and spellings included; source positions ignored).
 //!
 //! Checks listed in [`GATED`] fail this test when a failure is missing from
 //! `yaml_test_suite/known_failures.txt`, or when a listed failure passes, so
@@ -46,15 +48,17 @@ enum Check {
     Json,
     Coverage,
     RoundTrip,
+    Presentation,
 }
 
 impl Check {
-    const ALL: [Check; 5] = [
+    const ALL: [Check; 6] = [
         Check::Error,
         Check::Events,
         Check::Json,
         Check::Coverage,
         Check::RoundTrip,
+        Check::Presentation,
     ];
 
     fn name(self) -> &'static str {
@@ -64,6 +68,7 @@ impl Check {
             Check::Json => "json",
             Check::Coverage => "coverage",
             Check::RoundTrip => "roundtrip",
+            Check::Presentation => "presentation",
         }
     }
 
@@ -79,6 +84,7 @@ const GATED: &[Check] = &[
     Check::Json,
     Check::Coverage,
     Check::RoundTrip,
+    Check::Presentation,
 ];
 
 /// What is under test, for the report header.
@@ -169,6 +175,7 @@ struct Run {
     json: Option<Result<Vec<Json>, String>>,
     coverage: Option<Result<(), String>>,
     roundtrip: Option<Result<(), String>>,
+    presentation: Option<Result<(), String>>,
 }
 
 fn run_subject(yaml: Vec<u8>) -> Run {
@@ -184,6 +191,7 @@ fn run_subject(yaml: Vec<u8>) -> Run {
                 json: Some(Err(msg)),
                 coverage: None,
                 roundtrip: None,
+                presentation: None,
             };
         }
     };
@@ -223,6 +231,10 @@ fn run_subject(yaml: Vec<u8>) -> Run {
         (Ok(docs), Ok(())) => Some(check_roundtrip(&text, docs)),
         _ => None,
     };
+    let presentation = match (&docs, &accepted) {
+        (Ok(docs), Ok(())) => Some(check_presentation(docs)),
+        _ => None,
+    };
     let json = match docs {
         Ok(docs) => doc_json::docs_to_json(&docs),
         Err(e) => Err(e.to_string()),
@@ -234,7 +246,50 @@ fn run_subject(yaml: Vec<u8>) -> Run {
         json: Some(json),
         coverage,
         roundtrip,
+        presentation,
     }
+}
+
+/// `Debug` output without source spans, which differ between parses.
+fn debug_without_spans(docs: &[forgo_lib_yaml::Doc]) -> Vec<String> {
+    let text = format!("{docs:#?}");
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    for line in text.lines() {
+        if depth > 0 {
+            depth += line.matches('(').count();
+            depth = depth.saturating_sub(line.matches(')').count());
+            continue;
+        }
+        if line.trim_start().starts_with("span: SourceSpan(") {
+            depth = line
+                .matches('(')
+                .count()
+                .saturating_sub(line.matches(')').count());
+            continue;
+        }
+        out.push(line.to_string());
+    }
+    out
+}
+
+/// Emit `docs` and parse again: the documents must be equal, including
+/// comments and styles.
+fn check_presentation(docs: &[forgo_lib_yaml::Doc]) -> Result<(), String> {
+    let emitted =
+        forgo_lib_yaml::Doc::to_stream_string(docs).map_err(|e| format!("emit failed: {e}"))?;
+    let again = forgo_lib_yaml::Doc::from_stream(&emitted)
+        .map_err(|e| format!("emitted output doesn't parse ({e}): {emitted:?}"))?;
+    if again == docs {
+        return Ok(());
+    }
+    let a = debug_without_spans(docs);
+    let b = debug_without_spans(&again);
+    let refs: Vec<&str> = a.iter().map(String::as_str).collect();
+    Err(format!(
+        "{}; emitted {emitted:?}",
+        first_difference(&refs, &b)
+    ))
 }
 
 /// Emit `docs` and parse the output again; the content must be unchanged.
@@ -323,7 +378,7 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 struct Results {
-    tallies: [Tally; 5],
+    tallies: [Tally; 6],
     /// Error cases where `test.event` is a prefix of our events before the error.
     error_pos_agree: usize,
     error_pos_checked: usize,
@@ -406,6 +461,16 @@ fn evaluate(cases: &[Case]) -> Results {
             }
         }
 
+        // presentation
+        if !case.error {
+            let t = &mut r.tallies[Check::Presentation as usize];
+            match &run.presentation {
+                None => t.not_run += 1,
+                Some(Ok(())) => t.pass.push(case.id.clone()),
+                Some(Err(e)) => t.fail.push((case.id.clone(), e.clone())),
+            }
+        }
+
         // json
         if let (false, Some(text)) = (case.error, &case.json) {
             let expected = json::parse_many(text)
@@ -457,6 +522,9 @@ fn fail_all(r: &mut Results, case: &Case, detail: &str) {
             .fail
             .push((case.id.clone(), detail.to_string()));
         r.tallies[Check::RoundTrip as usize]
+            .fail
+            .push((case.id.clone(), detail.to_string()));
+        r.tallies[Check::Presentation as usize]
             .fail
             .push((case.id.clone(), detail.to_string()));
     }

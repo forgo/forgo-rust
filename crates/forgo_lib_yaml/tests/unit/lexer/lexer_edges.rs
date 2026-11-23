@@ -33,18 +33,18 @@ fn rejects_leading_tab_indent() {
 fn handles_crlf_as_newline() {
     let s = "a: 1\r\nb: 2\r\n";
     let d = Doc::from_str(s).unwrap();
+    assert_eq!(d.root().node().as_map().unwrap().len(), 2);
+    // CRLF input is written back with CRLF line breaks.
     let out = d.to_string().unwrap();
-    // CRLF should be normalized to LF in output
-    assert!(out.contains("a: 1\n"), "output: {:?}", out);
-    assert!(out.contains("\nb: 2\n"), "output: {:?}", out);
+    assert_eq!(out, "a: 1\r\nb: 2\r\n");
 }
 
 #[test]
 fn handles_bare_cr_as_newline() {
     let s = "x: 1\ry: 2\r";
     let d = Doc::from_str(s).unwrap();
+    assert_eq!(d.root().node().as_map().unwrap().len(), 2);
+    // CR line breaks are written back as CRLF.
     let out = d.to_string().unwrap();
-    // Bare CR should be normalized to LF in output
-    assert!(out.contains("x: 1\n"), "output: {:?}", out);
-    assert!(out.contains("\ny: 2\n"), "output: {:?}", out);
+    assert_eq!(out, "x: 1\r\ny: 2\r\n");
 }

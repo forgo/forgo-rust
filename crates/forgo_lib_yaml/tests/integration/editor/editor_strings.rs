@@ -39,35 +39,25 @@ list: [true, 2, "x", null, true]
     )
     .unwrap();
 
-    // Make the path type explicit so `"list".into()` resolves to Seg
     let path: &[Seg] = &["list".into()];
     d.visit_sequences_mut(path, |seq| normalize_string_list(seq));
-
     let out = d.to_string().unwrap();
-    let norm = normalize_indent(&out);
 
-    // After normalization, everything becomes strings, sorted & deduped.
-    // Expected order (ASCII sort): "2", "null", "true", "x"
-    // Emitter may quote keywords/numbers; check for the key bits robustly.
-    assert!(norm.contains("list:\n"));
-    assert!(
-        has_quoted_item(&norm, "2"),
-        "expected quoted numeric string:\n{out}"
-    );
-
-    // "null" and "true" should be strings now; emitter is allowed to quote them.
-    // We accept either quoted or (if your needs_quotes changes later) unquoted.
-    let has_null = has_quoted_item(&norm, "null") || has_bare_item(&norm, "null");
-    let has_true = has_quoted_item(&norm, "true") || has_bare_item(&norm, "true");
-    assert!(
-        has_null && has_true,
-        "normalized list missing null/true as strings:\n{out}"
-    );
-
-    // "x" may be bare or quoted.
-    assert!(
-        has_bare_item(&norm, "x") || has_quoted_item(&norm, "x"),
-        "{out}"
+    // Everything becomes a string, sorted and deduped; the flow style stays.
+    // Strings that would read back as other types are quoted.
+    assert!(out.contains(r#"list: ["2", "null", "true", x]"#), "{out}");
+    let back = Doc::from_str(&out).unwrap();
+    let items: Vec<_> = back.root().node().as_map().unwrap()[0]
+        .1
+        .node()
+        .as_seq()
+        .unwrap()
+        .iter()
+        .map(|e| e.node().as_str().map(str::to_string))
+        .collect();
+    assert_eq!(
+        items,
+        ["2", "null", "true", "x"].map(|s| Some(s.to_string()))
     );
 }
 
@@ -77,17 +67,21 @@ fn normalize_handles_exponents_negatives_and_prefixes() {
     let path: &[Seg] = &["list".into()];
     d.visit_sequences_mut(path, |seq| normalize_string_list(seq));
     let out = d.to_string().unwrap();
-    let norm = normalize_indent(&out);
-    // All as strings; numbers and sign-prefixed should be quoted.
-    assert!(has_quoted_item(&norm, "01"), "{out}");
-    assert!(has_quoted_item(&norm, "-3"), "{out}");
+    // All strings now; ones that look like numbers must be quoted.
+    for quoted in ["01", "-3", "5"] {
+        assert!(out.contains(&format!("\"{quoted}\"")), "{out}");
+    }
     assert!(
-        has_quoted_item(&norm, "1.0e3") || has_quoted_item(&norm, "1.0E3"),
+        out.contains("\"1.0e3\"") || out.contains("\"1.0E3\""),
         "{out}"
     );
-    assert!(has_quoted_item(&norm, "5"), "{out}");
-    assert!(
-        has_bare_item(&norm, "x") || has_quoted_item(&norm, "x"),
-        "{out}"
-    );
+    let back = Doc::from_str(&out).unwrap();
+    for e in back.root().node().as_map().unwrap()[0]
+        .1
+        .node()
+        .as_seq()
+        .unwrap()
+    {
+        assert!(e.node().as_str().is_some(), "not a string: {e:?}\n{out}");
+    }
 }

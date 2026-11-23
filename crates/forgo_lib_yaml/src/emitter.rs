@@ -1,19 +1,54 @@
 // crates/forgo_lib_yaml/src/emitter.rs
-//! Block-style emitter for `Doc` trees.
+//! Emitter for `Doc` trees.
 //!
-//! Every comment is printed exactly once: a map entry's or sequence item's
-//! leading comments before its line, trailing comments at the end of the
-//! node's first line, and the root's leading comments by `emit_root`.
+//! Block collections are indented by two spaces per level. Flow
+//! collections (recorded `Style::Flow`, and empty collections) stay flow:
+//! on one line, or one entry per line when they contain comments. Every
+//! comment is printed exactly once: leading comments before their entry,
+//! trailing comments at the end of the node's line. Scalar styles are
+//! chosen by `emitter_helpers::scalar_repr`.
 
-use crate::ast::{BlockStyle, Elem, Error, MapKey, Meta, Node, Scalar};
+use crate::ast::{Elem, Error, MapKey, Node, Scalar, Style};
 use crate::emitter_helpers::{
-    KeyForm, emit_indent, emit_key, emit_quoted, emit_scalar_with_ctx, is_block_scalar_candidate,
-    write_props,
+    Ctx, Repr, emit_block, emit_indent, emit_quoted, emit_single, plain_ok, scalar_repr,
+    scalar_text, write_folded_lines, write_props,
 };
 
 pub struct Emitter;
 
-fn emit_comment_lines(comments: &[String], indent: usize, out: &mut String) {
+const ROOT: Ctx = Ctx {
+    flow: false,
+    key: false,
+    block_ok: true,
+    empty_ok: true,
+};
+const BLOCK_VALUE: Ctx = ROOT;
+const BLOCK_KEY: Ctx = Ctx {
+    flow: false,
+    key: true,
+    block_ok: false,
+    empty_ok: true,
+};
+const FLOW_ITEM: Ctx = Ctx {
+    flow: true,
+    key: false,
+    block_ok: false,
+    empty_ok: false,
+};
+const FLOW_VALUE: Ctx = Ctx {
+    flow: true,
+    key: false,
+    block_ok: false,
+    empty_ok: true,
+};
+const FLOW_KEY: Ctx = Ctx {
+    flow: true,
+    key: true,
+    block_ok: false,
+    empty_ok: true,
+};
+
+fn comment_lines(comments: &[String], indent: usize, out: &mut String) {
     for c in comments {
         emit_indent(indent, out);
         out.push('#');
@@ -25,312 +60,363 @@ fn emit_comment_lines(comments: &[String], indent: usize, out: &mut String) {
     }
 }
 
-/// Block style for values written that way in the source, and for other
-/// multi-line strings unless a line ends in white space (which a block
-/// scalar would carry invisibly; libyaml makes the same choice).
-fn wants_block(meta: &Meta, s: &str) -> bool {
-    if meta.prefer_quoted {
-        return false;
+fn trailing(e: &Elem, out: &mut String) {
+    if let Some(tc) = &e.meta.trailing_comment {
+        out.push_str(" # ");
+        out.push_str(tc);
     }
-    if meta.prefer_block || meta.block_style.is_some() {
-        return true;
-    }
-    is_block_scalar_candidate(s) && !s.contains(" \n") && !s.contains("\t\n")
 }
 
-/// Can `s` be written as a block scalar at all?
-fn block_representable(s: &str) -> bool {
-    s.chars().all(|c| {
-        c == '\n'
-            || c == '\t'
-            || (crate::syntax::chars::is_printable(c)
-                && c != '\r'
-                && c != '\u{FEFF}'
-                && c != '\u{85}'
-                && c != '\u{2028}'
-                && c != '\u{2029}')
-    })
+/// Written as a flow collection.
+fn is_flow(e: &Elem) -> bool {
+    match &e.node {
+        Node::Seq(items) => items.is_empty() || e.meta.style == Some(Style::Flow),
+        Node::Map(entries) => entries.is_empty() || e.meta.style == Some(Style::Flow),
+        _ => false,
+    }
 }
 
-/// Write `|`/`>` header and body for `s`, or return false when `s` can't
-/// be a block scalar here. `content_indent` is the body's column. An
-/// indentation indicator (2, relative to the parent node, or to column 0
-/// at the top level) is used when the first non-empty line starts with a
-/// space; without `indicator_ok` such values fall back to double quotes.
-fn emit_block_scalar(
-    meta: &Meta,
-    s: &str,
-    folded: bool,
-    content_indent: usize,
-    indicator_ok: bool,
+/// Does anything inside `e` (not `e` itself) carry a comment?
+fn has_inner_comments(e: &Elem) -> bool {
+    fn any(e: &Elem) -> bool {
+        !e.meta.leading_comments.is_empty()
+            || e.meta.trailing_comment.is_some()
+            || has_inner_comments(e)
+    }
+    match &e.node {
+        Node::Seq(items) => items.iter().any(any),
+        Node::Map(entries) => entries.iter().any(|(k, v)| {
+            any(v)
+                || match k {
+                    MapKey::Complex(ke) => any(ke),
+                    MapKey::Str(_) => false,
+                }
+        }),
+        _ => false,
+    }
+}
+
+fn props_string(e: &Elem) -> String {
+    let mut p = String::new();
+    write_props(&e.meta, &mut p);
+    p
+}
+
+/// Write a scalar with the chosen representation (props are the caller's).
+/// `indent` is the column for continuation lines; `parent` is the column
+/// a block scalar's indentation indicator counts from.
+fn write_scalar(
+    sc: &Scalar,
+    e: &Elem,
+    ctx: Ctx,
+    indent: usize,
+    parent: usize,
     out: &mut String,
-) -> bool {
-    if !block_representable(s) {
-        return false;
+) -> Repr {
+    let repr = scalar_repr(sc, &e.meta, ctx);
+    let text = scalar_text(sc);
+    match &repr {
+        Repr::Plain(t) => write_folded_lines(t, indent, out),
+        Repr::Empty => {}
+        Repr::Single => emit_single(&text, indent, out),
+        Repr::Double => emit_quoted(&text, out),
+        Repr::Block { folded, header } => emit_block(
+            &text,
+            *folded,
+            *header,
+            parent,
+            e.meta.trailing_comment.as_deref(),
+            out,
+        ),
     }
-    let needs_indicator = s
-        .split('\n')
-        .find(|l| !l.is_empty())
-        .is_some_and(|l| l.starts_with(' '));
-    if needs_indicator && !indicator_ok {
-        return false;
-    }
-    let body = s.trim_end_matches('\n');
-    let trailing = s.len() - body.len();
-    let computed = if s.is_empty() {
-        "-"
-    } else if body.is_empty() {
-        "+"
-    } else {
-        match trailing {
-            0 => "-",
-            1 => "",
-            _ => "+",
-        }
-    };
-    // Keep the source's chomping indicator when it yields the same value.
-    let recorded = match meta.block_style {
-        Some(BlockStyle::Literal(c) | BlockStyle::Folded(c)) => Some(c),
-        None => None,
-    };
-    let chomp = match recorded {
-        Some(Some('+')) => "+",
-        Some(Some('-')) if trailing == 0 => "-",
-        Some(None) if s.is_empty() || (trailing == 1 && !body.is_empty()) => "",
-        _ => computed,
-    };
-    out.push(if folded { '>' } else { '|' });
-    if needs_indicator {
-        out.push('2');
-    }
-    out.push_str(chomp);
-    if let Some(tc) = &meta.trailing_comment {
-        out.push_str(" # ");
-        out.push_str(tc);
-    }
-    out.push('\n');
-    if folded {
-        write_folded_body(s, content_indent, out);
-    } else {
-        for piece in s.split_inclusive('\n') {
-            if piece != "\n" {
-                emit_indent(content_indent, out);
-                out.push_str(piece);
-            } else {
-                out.push('\n');
-            }
-        }
-        if !s.ends_with('\n') && !s.is_empty() {
-            out.push('\n');
-        }
-    }
-    true
+    repr
 }
 
-/// Folded body: a line break between two non-indented lines must be
-/// written as an empty line, because a single break folds into a space.
-fn write_folded_body(s: &str, indent: usize, out: &mut String) {
-    let mut breaks = true;
-    let mut leading_spaces = true;
-    let chars: Vec<char> = s.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        let c = chars[i];
-        if c == '\n' {
-            if !breaks && !leading_spaces {
-                let mut k = i;
-                while k < chars.len() && chars[k] == '\n' {
-                    k += 1;
-                }
-                if k < chars.len() && chars[k] != ' ' && chars[k] != '\t' {
-                    out.push('\n');
-                }
-            }
-            out.push('\n');
-            breaks = true;
-        } else {
-            if breaks {
-                emit_indent(indent, out);
-                leading_spaces = c == ' ' || c == '\t';
-            }
-            out.push(c);
-            breaks = false;
-        }
-        i += 1;
-    }
-    if !s.ends_with('\n') && !s.is_empty() {
-        out.push('\n');
-    }
-}
-
-fn emit_trailing_comment(meta: &Meta, out: &mut String) {
-    if let Some(tc) = &meta.trailing_comment {
-        out.push_str(" # ");
-        out.push_str(tc);
+fn trim_trailing_spaces(out: &mut String) {
+    while out.ends_with(' ') {
+        out.pop();
     }
 }
 
 impl Emitter {
     /// Emit a document root, including its leading comments and properties.
     pub fn emit_root(elem: &Elem, out: &mut String) -> Result<(), Error> {
-        emit_comment_lines(&elem.meta.leading_comments, 0, out);
-        let collection = matches!(&elem.node, Node::Map(m) if !m.is_empty())
-            || matches!(&elem.node, Node::Seq(s) if !s.is_empty());
-        if collection {
-            let mut props = String::new();
-            write_props(&elem.meta, &mut props);
-            let props = props.trim_end();
-            if !props.is_empty() || elem.meta.trailing_comment.is_some() {
-                out.push_str(props);
-                if let Some(tc) = &elem.meta.trailing_comment {
-                    if !props.is_empty() {
-                        out.push(' ');
-                    }
-                    out.push_str("# ");
-                    out.push_str(tc);
-                }
-                out.push('\n');
-            }
-        }
-        Self::emit_elem(elem, 0, out)
-    }
-
-    /// Emit `elem`'s content at `indent`. Leading comments are the caller's
-    /// job (see module docs).
-    pub fn emit_elem(elem: &Elem, indent: usize, out: &mut String) -> Result<(), Error> {
+        comment_lines(&elem.meta.leading_comments, 0, out);
         match &elem.node {
-            Node::Map(entries) => {
-                if entries.is_empty() {
-                    write_props(&elem.meta, out);
-                    out.push_str("{}");
-                    emit_trailing_comment(&elem.meta, out);
+            Node::Map(_) | Node::Seq(_) if !is_flow(elem) => {
+                let props = props_string(elem);
+                let props = props.trim_end();
+                if !props.is_empty() || elem.meta.trailing_comment.is_some() {
+                    out.push_str(props);
+                    if let Some(tc) = &elem.meta.trailing_comment {
+                        if !props.is_empty() {
+                            out.push(' ');
+                        }
+                        out.push_str("# ");
+                        out.push_str(tc);
+                    }
                     out.push('\n');
-                    return Ok(());
                 }
-                for (k, v) in entries {
-                    Self::emit_entry(k, v, indent, out)?;
-                }
-                Ok(())
+                Self::emit_block_collection(elem, 0, out)
             }
-            Node::Seq(items) => {
-                if items.is_empty() {
-                    write_props(&elem.meta, out);
-                    out.push_str("[]");
-                    emit_trailing_comment(&elem.meta, out);
-                    out.push('\n');
-                    return Ok(());
-                }
-                for it in items {
-                    Self::emit_item(it, indent, out)?;
-                }
-                Ok(())
-            }
-            Node::Scalar(Scalar::Str(s)) if wants_block(&elem.meta, s) => {
-                emit_indent(indent, out);
+            Node::Map(_) | Node::Seq(_) => {
                 write_props(&elem.meta, out);
-                let folded = matches!(elem.meta.block_style, Some(BlockStyle::Folded(_)));
-                if !emit_block_scalar(&elem.meta, s, folded, indent + 2, true, out) {
-                    emit_quoted(s, out);
-                    emit_trailing_comment(&elem.meta, out);
-                    out.push('\n');
-                }
+                Self::emit_flow(elem, 2, out);
+                trailing(elem, out);
+                out.push('\n');
                 Ok(())
             }
             Node::Scalar(sc) => {
-                emit_indent(indent, out);
-                write_props(&elem.meta, out);
-                let force = matches!(sc, Scalar::Str(_)) && elem.meta.prefer_quoted;
-                emit_scalar_with_ctx(sc, force, false, out);
-                emit_trailing_comment(&elem.meta, out);
-                out.push('\n');
+                out.push_str(&props_string(elem));
+                let repr = write_scalar(sc, elem, ROOT, 2, 0, out);
+                if !matches!(repr, Repr::Block { .. }) {
+                    if repr == Repr::Empty {
+                        trim_trailing_spaces(out);
+                    }
+                    trailing(elem, out);
+                    out.push('\n');
+                }
                 Ok(())
             }
             Node::Alias(name) => {
-                emit_indent(indent, out);
                 write_props(&elem.meta, out);
                 out.push('*');
                 out.push_str(name);
-                emit_trailing_comment(&elem.meta, out);
+                trailing(elem, out);
                 out.push('\n');
                 Ok(())
             }
         }
     }
 
+    fn emit_block_collection(elem: &Elem, indent: usize, out: &mut String) -> Result<(), Error> {
+        match &elem.node {
+            Node::Map(entries) => {
+                for (k, v) in entries {
+                    Self::emit_entry(k, v, indent, out)?;
+                }
+            }
+            Node::Seq(items) => {
+                for it in items {
+                    comment_lines(&it.meta.leading_comments, indent, out);
+                    emit_indent(indent, out);
+                    out.push('-');
+                    Self::emit_value_after_indicator(it, indent, out)?;
+                }
+            }
+            _ => unreachable!("not a collection"),
+        }
+        Ok(())
+    }
+
     fn emit_entry(k: &MapKey, v: &Elem, indent: usize, out: &mut String) -> Result<(), Error> {
-        emit_comment_lines(&v.meta.leading_comments, indent, out);
+        comment_lines(&v.meta.leading_comments, indent, out);
         emit_indent(indent, out);
-        if emit_key(k, out) == KeyForm::Explicit {
-            out.push('\n');
-            emit_indent(indent, out);
+        match k {
+            MapKey::Str(s) if plain_ok(s, BLOCK_KEY) => out.push_str(s),
+            MapKey::Str(s) if !s.contains('\n') && s.chars().count() <= 1000 => emit_quoted(s, out),
+            MapKey::Str(s) => {
+                out.push_str("? ");
+                emit_quoted(s, out);
+                out.push('\n');
+                emit_indent(indent, out);
+            }
+            MapKey::Complex(ke) => {
+                if !Self::write_inline_key(ke, out) {
+                    out.push('?');
+                    Self::emit_value_after_indicator(ke, indent, out)?;
+                    emit_indent(indent, out);
+                }
+            }
         }
         out.push(':');
         Self::emit_value_after_indicator(v, indent, out)
     }
 
-    fn emit_item(it: &Elem, indent: usize, out: &mut String) -> Result<(), Error> {
-        emit_comment_lines(&it.meta.leading_comments, indent, out);
-        emit_indent(indent, out);
-        out.push('-');
-        Self::emit_value_after_indicator(it, indent, out)
-    }
-
-    /// Emit a value right after `key:` or `-` at `indent`.
-    fn emit_value_after_indicator(v: &Elem, indent: usize, out: &mut String) -> Result<(), Error> {
-        match &v.node {
-            Node::Scalar(Scalar::Str(s)) if wants_block(&v.meta, s) => {
-                out.push(' ');
-                write_props(&v.meta, out);
-                let folded = matches!(v.meta.block_style, Some(BlockStyle::Folded(_)));
-                if !emit_block_scalar(&v.meta, s, folded, indent + 2, true, out) {
-                    emit_quoted(s, out);
-                    emit_trailing_comment(&v.meta, out);
-                    out.push('\n');
+    /// Write a complex key as an implicit key if it can be one.
+    fn write_inline_key(ke: &Elem, out: &mut String) -> bool {
+        let short = |s: &str| !s.contains('\n') && s.chars().count() <= 1000;
+        if !ke.meta.leading_comments.is_empty() || ke.meta.trailing_comment.is_some() {
+            return false;
+        }
+        // A key written as a block scalar keeps that form: `? |`.
+        if matches!(ke.meta.style, Some(Style::Literal(_) | Style::Folded(_))) {
+            return false;
+        }
+        match &ke.node {
+            Node::Scalar(sc) => {
+                let props = props_string(ke);
+                let mut tmp = props.clone();
+                match write_scalar(sc, ke, BLOCK_KEY, 0, 0, &mut tmp) {
+                    Repr::Block { .. } => false,
+                    Repr::Empty => {
+                        // `: value`, or `!tag : value` / `&a : value`.
+                        out.push_str(&props);
+                        true
+                    }
+                    _ if short(&tmp) => {
+                        out.push_str(&tmp);
+                        true
+                    }
+                    _ => false,
                 }
             }
+            Node::Alias(name) => {
+                write_props(&ke.meta, out);
+                out.push('*');
+                out.push_str(name);
+                // `:` is an anchor character: separate it from the name.
+                out.push(' ');
+                true
+            }
+            Node::Seq(_) | Node::Map(_) => {
+                if !is_flow(ke) || has_inner_comments(ke) {
+                    return false;
+                }
+                let mut tmp = props_string(ke);
+                Self::emit_flow(ke, 2, &mut tmp);
+                if short(&tmp) {
+                    out.push_str(&tmp);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Emit a value right after `key:`, `-` or `?` at `indent`, through the
+    /// end of its last line.
+    fn emit_value_after_indicator(v: &Elem, indent: usize, out: &mut String) -> Result<(), Error> {
+        match &v.node {
             Node::Scalar(sc) => {
                 out.push(' ');
-                write_props(&v.meta, out);
-                let force = matches!(sc, Scalar::Str(_)) && v.meta.prefer_quoted;
-                emit_scalar_with_ctx(sc, force, false, out);
-                emit_trailing_comment(&v.meta, out);
-                out.push('\n');
+                out.push_str(&props_string(v));
+                let repr = write_scalar(sc, v, BLOCK_VALUE, indent + 2, indent, out);
+                if !matches!(repr, Repr::Block { .. }) {
+                    if repr == Repr::Empty {
+                        trim_trailing_spaces(out);
+                    }
+                    trailing(v, out);
+                    out.push('\n');
+                }
             }
             Node::Alias(name) => {
                 out.push(' ');
                 write_props(&v.meta, out);
                 out.push('*');
                 out.push_str(name);
-                emit_trailing_comment(&v.meta, out);
+                trailing(v, out);
                 out.push('\n');
             }
-            Node::Seq(items) if items.is_empty() => {
+            Node::Seq(_) | Node::Map(_) if is_flow(v) => {
                 out.push(' ');
                 write_props(&v.meta, out);
-                out.push_str("[]");
-                emit_trailing_comment(&v.meta, out);
-                out.push('\n');
-            }
-            Node::Map(entries) if entries.is_empty() => {
-                out.push(' ');
-                write_props(&v.meta, out);
-                out.push_str("{}");
-                emit_trailing_comment(&v.meta, out);
+                Self::emit_flow(v, indent + 2, out);
+                trailing(v, out);
                 out.push('\n');
             }
             Node::Seq(_) | Node::Map(_) => {
-                let mut props = String::new();
-                write_props(&v.meta, &mut props);
+                let props = props_string(v);
                 let props = props.trim_end();
                 if !props.is_empty() {
                     out.push(' ');
                     out.push_str(props);
                 }
-                emit_trailing_comment(&v.meta, out);
+                trailing(v, out);
                 out.push('\n');
-                Self::emit_elem(v, indent + 2, out)?;
+                Self::emit_block_collection(v, indent + 2, out)?;
             }
         }
         Ok(())
+    }
+
+    /// Emit a node inside a flow collection (no line break at the end).
+    /// `indent` is the column for continuation lines.
+    fn emit_flow_node(e: &Elem, ctx: Ctx, indent: usize, out: &mut String) {
+        write_props(&e.meta, out);
+        match &e.node {
+            Node::Scalar(sc) => {
+                if write_scalar(sc, e, ctx, indent, indent, out) == Repr::Empty {
+                    trim_trailing_spaces(out);
+                }
+            }
+            Node::Alias(name) => {
+                out.push('*');
+                out.push_str(name);
+            }
+            Node::Seq(_) | Node::Map(_) => Self::emit_flow(e, indent + 2, out),
+        }
+    }
+
+    /// Emit a flow mapping key (without the `:`).
+    fn emit_flow_key(k: &MapKey, indent: usize, out: &mut String) {
+        match k {
+            MapKey::Str(s) if plain_ok(s, FLOW_KEY) => out.push_str(s),
+            MapKey::Str(s) => emit_quoted(s, out),
+            MapKey::Complex(ke) => {
+                let before = out.len();
+                Self::emit_flow_node(ke, FLOW_KEY, indent, out);
+                let alias = matches!(ke.node, Node::Alias(_));
+                let only_props = out.len() == before + props_string(ke).trim_end().len()
+                    && (ke.meta.tag.is_some() || ke.meta.anchor.is_some());
+                if alias || only_props {
+                    // `*a :` and `!tag :` need the space before `:`.
+                    out.push(' ');
+                }
+            }
+        }
+    }
+
+    /// Emit a collection in flow style (no line break at the end).
+    /// `indent` is the column for entries on continuation lines.
+    fn emit_flow(e: &Elem, indent: usize, out: &mut String) {
+        let multiline = has_inner_comments(e);
+        let (open, close, n) = match &e.node {
+            Node::Seq(items) => ('[', ']', items.len()),
+            Node::Map(entries) => ('{', '}', entries.len()),
+            _ => unreachable!("not a collection"),
+        };
+        out.push(open);
+        for i in 0..n {
+            let node = match &e.node {
+                Node::Seq(items) => &items[i],
+                Node::Map(entries) => &entries[i].1,
+                _ => unreachable!(),
+            };
+            if multiline {
+                out.push('\n');
+                comment_lines(&node.meta.leading_comments, indent, out);
+                emit_indent(indent, out);
+            } else if i > 0 {
+                out.push(' ');
+            }
+            match &e.node {
+                Node::Seq(items) => Self::emit_flow_node(&items[i], FLOW_ITEM, indent, out),
+                Node::Map(entries) => {
+                    let (k, v) = &entries[i];
+                    Self::emit_flow_key(k, indent, out);
+                    out.push(':');
+                    let mut value = String::from(" ");
+                    Self::emit_flow_node(v, FLOW_VALUE, indent, &mut value);
+                    if !value.trim().is_empty() {
+                        out.push_str(&value);
+                    }
+                }
+                _ => unreachable!(),
+            }
+            if i + 1 < n {
+                out.push(',');
+            }
+            if multiline && let Some(tc) = &node.meta.trailing_comment {
+                out.push_str(" # ");
+                out.push_str(tc);
+            }
+        }
+        if multiline {
+            out.push('\n');
+            emit_indent(indent, out);
+        }
+        out.push(close);
     }
 }

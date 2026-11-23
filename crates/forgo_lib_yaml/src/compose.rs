@@ -14,9 +14,9 @@
 //! anchored scalars, aliases, collections) becomes `MapKey::Complex`.
 //! Duplicate keys are kept in order (lookups use the last one).
 
-use crate::ast::{BlockStyle, Doc, Elem, Error, MapKey, Meta, Node, Scalar};
+use crate::ast::{Doc, Elem, Error, MapKey, Meta, Node, Scalar, SourceSpan, Style};
 use crate::schema;
-use crate::syntax::{self, Chomping, Comment, Event, Mark, ScalarStyle, Span, Tag};
+use crate::syntax::{self, Comment, Event, Mark, ScalarStyle, Span, Tag};
 use std::borrow::Cow;
 use std::collections::HashSet;
 
@@ -310,30 +310,34 @@ impl<'a> Composer<'a> {
                 let mut meta = Meta::default();
                 self.begin_node(span.start, false, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
+                meta.span = SourceSpan(Some(span));
+                meta.style = Some(match style {
+                    ScalarStyle::Plain => Style::Plain,
+                    ScalarStyle::SingleQuoted => Style::SingleQuoted,
+                    ScalarStyle::DoubleQuoted => Style::DoubleQuoted,
+                    ScalarStyle::Literal => Style::Literal(block.unwrap_or_default()),
+                    ScalarStyle::Folded => Style::Folded(block.unwrap_or_default()),
+                });
                 let resolved = tag.as_ref().map(|t| t.resolved.as_ref());
+                // Remember how a plain null or boolean was spelled.
+                let spelled = style == ScalarStyle::Plain
+                    && (schema::is_null(&value) || schema::parse_bool(&value).is_some());
+                let raw = spelled.then(|| value.to_string());
                 let scalar = schema::resolve(value.into_owned(), style, resolved);
-                match style {
-                    ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted => {
-                        meta.prefer_quoted = true
-                    }
-                    ScalarStyle::Literal | ScalarStyle::Folded => {
-                        let chomp = match block.map(|b| b.chomping) {
-                            Some(Chomping::Strip) => Some('-'),
-                            Some(Chomping::Keep) => Some('+'),
-                            _ => None,
-                        };
-                        meta.prefer_block = true;
-                        meta.block_style = Some(if style == ScalarStyle::Literal {
-                            BlockStyle::Literal(chomp)
-                        } else {
-                            BlockStyle::Folded(chomp)
-                        });
-                    }
-                    ScalarStyle::Plain => {}
+                let canonical = match &scalar {
+                    Scalar::Null => Some("null"),
+                    Scalar::Bool(true) => Some("true"),
+                    Scalar::Bool(false) => Some("false"),
+                    _ => None,
+                };
+                if let (Some(raw), Some(canonical)) = (raw, canonical)
+                    && raw != canonical
+                {
+                    meta.spelling = Some(raw);
                 }
-                let block = matches!(style, ScalarStyle::Literal | ScalarStyle::Folded);
+                let block_style = matches!(style, ScalarStyle::Literal | ScalarStyle::Folded);
                 if self.role() != Role::Key {
-                    let within = block.then_some(span.end.index);
+                    let within = block_style.then_some(span.end.index);
                     self.grab_trailing(&mut meta, span.end, within);
                 }
                 self.complete(Elem {
@@ -352,6 +356,7 @@ impl<'a> Composer<'a> {
                 }
                 let mut meta = Meta::default();
                 self.begin_node(span.start, false, &mut meta);
+                meta.span = SourceSpan(Some(span));
                 if self.role() != Role::Key {
                     self.grab_trailing(&mut meta, span.end, None);
                 }
@@ -364,7 +369,8 @@ impl<'a> Composer<'a> {
                 let mut meta = Meta::default();
                 self.begin_node(span.start, true, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
-                let _ = flow;
+                meta.span = SourceSpan(Some(span));
+                meta.style = Some(if flow { Style::Flow } else { Style::Block });
                 self.stack.push(Frame::Seq(Elem {
                     node: Node::Seq(Vec::new()),
                     meta,
@@ -374,7 +380,8 @@ impl<'a> Composer<'a> {
                 let mut meta = Meta::default();
                 self.begin_node(span.start, true, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
-                let _ = flow;
+                meta.span = SourceSpan(Some(span));
+                meta.style = Some(if flow { Style::Flow } else { Style::Block });
                 self.stack.push(Frame::Map {
                     elem: Elem {
                         node: Node::Map(Vec::new()),
@@ -392,6 +399,9 @@ impl<'a> Composer<'a> {
                 };
                 // Only a flow collection's end is a real position on its line.
                 let is_flow_end = span.end.index > span.start.index;
+                if let SourceSpan(Some(s)) = &mut elem.meta.span {
+                    s.end = span.end;
+                }
                 if is_flow_end && self.role() != Role::Key {
                     self.grab_trailing(&mut elem.meta, span.end, None);
                 }
@@ -402,9 +412,12 @@ impl<'a> Composer<'a> {
     }
 }
 
+/// Plain, untagged, unanchored strings become `MapKey::Str`; every other
+/// key keeps its node and metadata (so quoting and types survive).
 fn make_key(elem: Elem) -> MapKey {
     let plain_string = elem.meta.anchor.is_none()
         && elem.meta.tag.is_none()
+        && matches!(elem.meta.style, None | Some(Style::Plain))
         && matches!(elem.node, Node::Scalar(Scalar::Str(_)));
     if plain_string && let Node::Scalar(Scalar::Str(s)) = elem.node {
         return MapKey::Str(s);
@@ -428,7 +441,7 @@ mod tests {
         assert_eq!(m[1].1.node, Node::Scalar(Scalar::Bool(true)));
         assert_eq!(m[2].1.node, Node::Scalar(Scalar::Null));
         assert_eq!(m[3].1.node, Node::Scalar(Scalar::Str("1".into())));
-        assert!(m[3].1.meta.prefer_quoted);
+        assert!(m[3].1.meta.is_quoted());
         assert_eq!(m[5].1.node, Node::Scalar(Scalar::Null));
     }
 

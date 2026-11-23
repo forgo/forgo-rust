@@ -134,6 +134,12 @@ impl Fixture {
                 output2.trim(),
                 "Round-trip not stable: parse → emit → parse → emit changed output"
             );
+            // Presentation: re-parsing the output gives an equal document
+            // (comments, styles and spellings included).
+            assert!(
+                doc2 == doc,
+                "Re-parsed document differs from the original.\nOutput:\n{output}\nOriginal: {doc:#?}\nRe-parsed: {doc2:#?}"
+            );
             println!("✓ Round-trip stable");
         }
     }

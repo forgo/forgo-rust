@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::emitter::Emitter;
+pub use crate::syntax::{BlockHeader, Chomping};
 
 /// Path segment for traversal. `*` is a wildcard.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -190,6 +191,36 @@ impl Scalar {
     }
 }
 
+/// How a node is written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Style {
+    /// A plain scalar.
+    Plain,
+    /// `'single quoted'`
+    SingleQuoted,
+    /// `"double quoted"`
+    DoubleQuoted,
+    /// A `|` block scalar and its header indicators.
+    Literal(BlockHeader),
+    /// A `>` block scalar and its header indicators.
+    Folded(BlockHeader),
+    /// A block collection (indented entries, `- ` items).
+    Block,
+    /// A flow collection (`[a, b]`, `{a: 1}`).
+    Flow,
+}
+
+/// Where a node was in the source. Always equal to any other `SourceSpan`,
+/// so documents compare by content and presentation, not by origin.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SourceSpan(pub Option<crate::syntax::Span>);
+
+impl PartialEq for SourceSpan {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
 /// Node metadata we preserve and re-emit.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Meta {
@@ -199,22 +230,36 @@ pub struct Meta {
     pub trailing_comment: Option<String>,
     /// Optional anchor name attached to this node: `&name`.
     pub anchor: Option<String>,
-    /// Optional tag attached to this node: `!str`, `!!str`, `!<tag:example.com,2000:app/thing>`, etc.
+    /// Optional tag, as written: `!str`, `!!str`, `!<tag:example.com,2000:app/thing>`, etc.
     pub tag: Option<String>,
-    /// Remember the source style so emitter can force block style when desired
-    pub prefer_block: bool,
-    /// Preserving quotes for an originally quoted scalar ("abc" at top level).
-    pub prefer_quoted: bool,
-    /// If present, preserve original block scalar style instead of canonicalizing.
-    pub block_style: Option<BlockStyle>,
+    /// How the node was written. `None` (nodes built in code) lets the
+    /// emitter choose. The emitter honors a style when the value allows it.
+    pub style: Option<Style>,
+    /// The source text of a plain null or boolean (`~`, `Null`, `True`, or
+    /// empty) when it differs from the default `null`, `true` or `false`.
+    pub spelling: Option<String>,
+    /// Where the node was in the source (ignored by `==`).
+    pub span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BlockStyle {
-    /// Literal `|` with optional chomping (+/-/None).
-    Literal(Option<char>),
-    /// Folded `>` with optional chomping (+/-/None).
-    Folded(Option<char>),
+impl Meta {
+    /// Single- or double-quoted.
+    pub fn is_quoted(&self) -> bool {
+        matches!(self.style, Some(Style::SingleQuoted | Style::DoubleQuoted))
+    }
+
+    /// A literal or folded block scalar, or a block collection.
+    pub fn is_block(&self) -> bool {
+        matches!(
+            self.style,
+            Some(Style::Literal(_) | Style::Folded(_) | Style::Block)
+        )
+    }
+
+    /// A flow collection.
+    pub fn is_flow(&self) -> bool {
+        self.style == Some(Style::Flow)
+    }
 }
 
 /// An element pairs a node with metadata (comments, anchor).
@@ -288,15 +333,25 @@ impl Elem {
         self
     }
 
-    /// Prefer block style when emitting
+    /// Emit with block style: a literal block scalar for strings, block
+    /// layout for collections.
     pub fn prefer_block(mut self) -> Self {
-        self.meta.prefer_block = true;
+        self.meta.style = Some(match self.node {
+            Node::Map(_) | Node::Seq(_) => Style::Block,
+            _ => Style::Literal(BlockHeader::default()),
+        });
         self
     }
 
-    /// Prefer quoted style for string scalars
+    /// Emit strings double-quoted.
     pub fn prefer_quoted(mut self) -> Self {
-        self.meta.prefer_quoted = true;
+        self.meta.style = Some(Style::DoubleQuoted);
+        self
+    }
+
+    /// Emit with the given style (when the value allows it).
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.meta.style = Some(style);
         self
     }
 
@@ -778,8 +833,9 @@ impl Doc {
         Self::from_str(&text)
     }
 
-    /// Emit as canonical string (dash-lists, stable indentation, comments).
-    /// Directives are written (followed by `---`) when the document has any.
+    /// Emit the document. Directives, `---` and `...` are written when the
+    /// document had them (or needs them), and CRLF line breaks are used
+    /// when the source used CR line breaks.
     pub fn to_string(&self) -> Result<String, Error> {
         let mut out = String::new();
         // If the first thing we'll emit is a comment, don't add the preserved
@@ -797,12 +853,17 @@ impl Doc {
         if self.had_leading_blank && !begins_with_comment && !self.no_content {
             out.push('\n');
         }
-        self.emit_directives(&mut out)?;
-        if self.yaml_version.is_some() || !self.tag_handles.is_empty() {
-            out.push_str("---\n");
+        self.emit_one_into(&mut out, false)?;
+        Ok(self.line_breaks(out))
+    }
+
+    /// CR line breaks in the source become CRLF in the output.
+    fn line_breaks(&self, out: String) -> String {
+        if self.saw_carriage_return {
+            out.replace('\n', "\r\n")
+        } else {
+            out
         }
-        self.emit_body(&mut out)?;
-        Ok(out)
     }
 
     fn emit_directives(&self, out: &mut String) -> Result<(), Error> {
@@ -834,25 +895,50 @@ impl Doc {
     /// Emit a full stream.
     pub fn to_stream_string(docs: &[Self]) -> Result<String, Error> {
         let mut out = String::new();
+        if let Some(first) = docs.first()
+            && first.had_leading_blank
+            && !first.no_content
+        {
+            out.push('\n');
+        }
         for (i, d) in docs.iter().enumerate() {
             if i > 0 && !out.ends_with('\n') {
                 out.push('\n');
             }
-            d.emit_one_into(&mut out, i > 0)?;
+            // A document must start with `---` unless the previous one
+            // ended with `...` (or it is the first).
+            let needs_start = i > 0 && !docs[i - 1].explicit_end;
+            d.emit_one_into(&mut out, needs_start)?;
         }
-        Ok(out)
+        Ok(match docs.first() {
+            Some(d) => d.line_breaks(out),
+            None => out,
+        })
     }
 
-    fn emit_one_into(&self, out: &mut String, follows_document: bool) -> Result<(), Error> {
+    fn emit_one_into(&self, out: &mut String, needs_start: bool) -> Result<(), Error> {
         // Directives must precede `---`; after another document they also
         // need that document to end with `...`.
         let has_directives = self.yaml_version.is_some() || !self.tag_handles.is_empty();
-        if has_directives && follows_document && !out.ends_with("...\n") {
+        if has_directives && needs_start && !out.ends_with("...\n") {
             out.push_str("...\n");
         }
         self.emit_directives(out)?;
-        if self.explicit_start || has_directives || follows_document {
-            out.push_str("---\n");
+        if self.explicit_start || has_directives || needs_start {
+            out.push_str("---");
+            // Keep a scalar or flow root on the `---` line, as written.
+            let inline = !self.no_content
+                && self.root.meta.leading_comments.is_empty()
+                && match &self.root.node {
+                    Node::Scalar(_) | Node::Alias(_) => true,
+                    Node::Map(m) => m.is_empty() || self.root.meta.is_flow(),
+                    Node::Seq(s) => s.is_empty() || self.root.meta.is_flow(),
+                };
+            if inline {
+                out.push(' ');
+            } else {
+                out.push('\n');
+            }
         }
         self.emit_body(out)?;
         if self.explicit_end {

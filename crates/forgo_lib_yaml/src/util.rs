@@ -1,120 +1,21 @@
 // crates/forgo_lib_yaml/src/util.rs
-fn is_yaml_dot_keyword(s: &str) -> bool {
-    // YAML 1.1 style float keywords. We quote them to keep string semantics.
-    // Accepts any case: .nan, .NaN, .NAN, .inf, +.inf, -.inf, etc.
-    let low = s.to_ascii_lowercase();
-    matches!(low.as_str(), ".nan" | ".inf" | "+.inf" | "-.inf")
-}
+//! Public helpers.
 
-/// Return true if string must be quoted in YAML to be unambiguous.
-/// Besides whitespace/colon/leading-dash, we also quote anything that YAML
-/// would otherwise parse as a non-string scalar (numbers, true/false/null/~).
+use crate::emitter_helpers::{Ctx, plain_ok};
+
+/// Does `s` need quotes to be written as a YAML string mapping value? True
+/// unless `s` can be a plain scalar there that reads back as the same
+/// string: no leading/trailing white space, no `: ` or ` #`, no leading
+/// indicator, not a document marker, and not something the core schema
+/// would read as null, a boolean or a number (`~`, `True`, `0x1F`, `.inf`).
 pub fn needs_quotes(s: &str) -> bool {
-    if s.is_empty() {
-        return true;
-    }
-
-    // Leading/trailing whitespace
-    if s.trim() != s {
-        return true;
-    }
-
-    // Any internal ASCII space requires quotes
-    if s.contains(' ') {
-        return true;
-    }
-
-    // Any control-ish stuff? (tabs/newlines)
-    if s.chars().any(|c| matches!(c, '\n' | '\r' | '\t')) {
-        return true;
-    }
-
-    // Comment / inline-comment hazards
-    if s.contains('#') {
-        return true;
-    }
-
-    // YAML keywords that would change type if left plain
-    match s {
-        "null" | "Null" | "NULL" | "~" | "true" | "True" | "TRUE" | "false" | "False" | "FALSE" => {
-            return true;
-        }
-        _ => {}
-    }
-
-    // YAML 1.1-style "dot" float keywords (.nan/.inf with optional sign)
-    if is_yaml_dot_keyword(s) {
-        return true;
-    }
-
-    // Numeric-looking literals: keep them quoted if you want stable string type
-    if is_number_like(s) {
-        return true;
-    }
-
-    // A leading "- " is hazardous (could look like a list item if projected)
-    if s.starts_with("- ") {
-        return true;
-    }
-
-    // Trailing colon looks like a mapping key if reflowed: quote it
-    if s.ends_with(':') {
-        return true;
-    }
-
-    // *** Colon rule ***
-    // Only a colon *followed by space* is hazardous and must be quoted.
-    // A glued colon (e.g., "k:v") is allowed as a plain scalar.
-    if s.contains(": ") {
-        return true;
-    }
-
-    // Otherwise fine — allow Unicode and e.g. "k:v" as plain.
-    false
-}
-
-pub fn is_number_like(text: &str) -> bool {
-    // Strict but simple: [-+]?\d+(\.\d+)?([eE][-+]?\d+)?  (no hex/oct/bin)
-    let bytes = text.as_bytes();
-    if bytes.is_empty() {
-        return false;
-    }
-    let mut i = 0;
-    if matches!(bytes[0], b'+' | b'-') {
-        i += 1;
-    }
-    let mut digits = 0usize;
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        i += 1;
-        digits += 1;
-    }
-    if digits == 0 {
-        return false;
-    }
-    if i < bytes.len() && bytes[i] == b'.' {
-        i += 1;
-        let mut frac = 0usize;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
-            frac += 1;
-        }
-        if frac == 0 {
-            return false;
-        }
-    }
-    if i < bytes.len() && (bytes[i] == b'e' || bytes[i] == b'E') {
-        i += 1;
-        if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
-            i += 1;
-        }
-        let mut ed = 0usize;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
-            ed += 1;
-        }
-        if ed == 0 {
-            return false;
-        }
-    }
-    i == bytes.len()
+    !plain_ok(
+        s,
+        Ctx {
+            flow: false,
+            key: false,
+            block_ok: true,
+            empty_ok: true,
+        },
+    )
 }

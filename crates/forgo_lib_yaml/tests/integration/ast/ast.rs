@@ -31,10 +31,9 @@ fn anchor_and_comment_on_block_header() {
     {
         let root = d.root();
         eprintln!(
-            "PARSED root meta: anchor={:?} prefer_block={} block_style={:?} trailing={:?} leading={:?}",
+            "PARSED root meta: anchor={:?} style={:?} trailing={:?} leading={:?}",
             root.meta.anchor,
-            root.meta.prefer_block,
-            root.meta.block_style,
+            root.meta.style,
             root.meta.trailing_comment,
             root.meta.leading_comments
         );
@@ -42,11 +41,10 @@ fn anchor_and_comment_on_block_header() {
             Node::Map(entries) => {
                 for (k, v) in entries {
                     eprintln!(
-                        "ENTRY key={:?} meta: anchor={:?} prefer_block={} block_style={:?} trailing={:?} leading={:?}",
+                        "ENTRY key={:?} meta: anchor={:?} style={:?} trailing={:?} leading={:?}",
                         k,
                         v.meta.anchor,
-                        v.meta.prefer_block,
-                        v.meta.block_style,
+                        v.meta.style,
                         v.meta.trailing_comment,
                         v.meta.leading_comments
                     );

@@ -191,21 +191,21 @@ fn test_with_anchor_accepts_string() {
 #[test]
 fn test_prefer_block_sets_flag() {
     let elem = Elem::map().prefer_block();
-    assert!(elem.meta.prefer_block);
+    assert!(elem.meta.is_block());
 }
 
 #[test]
 fn test_prefer_block_chainable() {
     let elem = Elem::seq().prefer_block().with_comment("block style");
 
-    assert!(elem.meta.prefer_block);
+    assert!(elem.meta.is_block());
     assert_eq!(elem.meta.trailing_comment, Some("block style".into()));
 }
 
 #[test]
 fn test_prefer_block_on_scalar() {
     let elem = Elem::string("multiline\nstring").prefer_block();
-    assert!(elem.meta.prefer_block);
+    assert!(elem.meta.is_block());
 }
 
 // ============================================================================
@@ -215,7 +215,7 @@ fn test_prefer_block_on_scalar() {
 #[test]
 fn test_prefer_quoted_sets_flag() {
     let elem = Elem::string("needs quotes").prefer_quoted();
-    assert!(elem.meta.prefer_quoted);
+    assert!(elem.meta.is_quoted());
 }
 
 #[test]
@@ -224,7 +224,7 @@ fn test_prefer_quoted_chainable() {
         .prefer_quoted()
         .with_comment("quoted string");
 
-    assert!(elem.meta.prefer_quoted);
+    assert!(elem.meta.is_quoted());
     assert_eq!(elem.meta.trailing_comment, Some("quoted string".into()));
 }
 
@@ -244,7 +244,7 @@ fn test_full_chain_all_metadata() {
     assert_eq!(elem.meta.leading_comments.len(), 2);
     assert_eq!(elem.meta.trailing_comment, Some("inline note".into()));
     assert_eq!(elem.meta.anchor, Some("important_value".into()));
-    assert!(elem.meta.prefer_quoted);
+    assert!(elem.meta.is_quoted());
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn test_build_map_with_metadata() {
     assert!(elem.node().is_map());
     assert_eq!(elem.meta.leading_comments[0], "Configuration section");
     assert_eq!(elem.meta.anchor, Some("config".into()));
-    assert!(elem.meta.prefer_block);
+    assert!(elem.meta.is_block());
 }
 
 #[test]
@@ -306,8 +306,7 @@ fn test_constructors_produce_default_metadata() {
     assert!(elem.meta.leading_comments.is_empty());
     assert!(elem.meta.trailing_comment.is_none());
     assert!(elem.meta.anchor.is_none());
-    assert!(!elem.meta.prefer_block);
-    assert!(!elem.meta.prefer_quoted);
+    assert!(elem.meta.style.is_none());
 }
 
 #[test]
@@ -340,8 +339,9 @@ fn test_with_anchor_empty_string() {
 
 #[test]
 fn test_multiple_flags_combined() {
+    // A node has one style: the last builder call wins.
     let elem = Elem::string("test").prefer_block().prefer_quoted();
 
-    assert!(elem.meta.prefer_block);
-    assert!(elem.meta.prefer_quoted);
+    assert!(!elem.meta.is_block());
+    assert!(elem.meta.is_quoted());
 }

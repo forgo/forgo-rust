@@ -25,7 +25,8 @@ fn literal_with_indent_indicator_removes_exact_k_spaces() {
     let d = Doc::from_str("|2\n  a\n    b\n\n    d\n").unwrap();
     assert_eq!(d.root().node().as_str(), Some("a\n  b\n\n  d\n"));
     let out = d.to_string().unwrap();
-    assert!(out.contains("|\n  a\n    b\n\n    d\n"), "got: {out:?}");
+    // The recorded indentation indicator is kept.
+    assert!(out.contains("|2\n  a\n    b\n\n    d\n"), "got: {out:?}");
 
     // A less indented non-empty line ends the scalar; " c" is then extra
     // content after the document's node, which is an error.
@@ -109,8 +110,8 @@ fn indicator_order_is_free_mixture() {
             // Literal: "a\nb" emitted as "  a\n  b"
             assert!(out.contains("  a\n  b"), "Failed for input: {}", s);
         } else {
-            // Folded: "a b" emitted as "  a b"
-            assert!(out.contains("  a b"), "Failed for input: {}", s);
+            // Folded: "a b", body kept at the recorded indentation (1)
+            assert!(out.contains("\n a b\n"), "Failed for input: {}\n{out}", s);
         }
     }
 }

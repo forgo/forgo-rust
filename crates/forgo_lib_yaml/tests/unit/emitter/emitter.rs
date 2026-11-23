@@ -25,64 +25,40 @@ fn has_quoted_value(line: &str, val: &str) -> bool {
 }
 
 #[test]
-fn emit_normalizes_inline_to_dash() {
-    let d = Doc::from_str("m:\n  n:\n    list: [zeta, alpha, alpha]\n").unwrap();
+fn emit_keeps_inline_flow_list_unless_block_requested() {
+    let mut d = Doc::from_str("m:\n  n:\n    list: [zeta, alpha, alpha]\n").unwrap();
     let out = d.to_string().unwrap();
-    let norm = norm_indent(&out);
+    // A flow list in the source stays a flow list.
+    assert!(out.contains("    list: [zeta, alpha, alpha]\n"), "{out}");
 
-    // Find the 'list:' block regardless of exact indentation.
-    let mut saw_list = false;
-    let mut items = Vec::<String>::new();
-    for line in norm.lines() {
-        if line == "list:" {
-            saw_list = true;
-            continue;
-        }
-        if saw_list {
-            if line.starts_with("- ") {
-                items.push(line[2..].to_string());
-            } else if !line.is_empty() {
-                // Another top-level key under the same parent; stop scanning list block
-                break;
-            }
-        }
-    }
-
-    assert!(saw_list, "no 'list:' block in:\n{out}");
+    // Requesting block style turns it into dash items.
+    let path: &[forgo_lib_yaml::Seg] = &["m".into(), "n".into(), "list".into()];
+    d.visit_values_mut(path, |e| {
+        e.meta.style = Some(forgo_lib_yaml::Style::Block);
+        true
+    });
+    let out = d.to_string().unwrap();
     assert!(
-        !items.is_empty(),
-        "list was not expanded to dash style (no '- ' items):\n{out}"
-    );
-
-    // Must contain alpha and zeta, order and duplicates are not mandated by emitter.
-    let has_alpha = items
-        .iter()
-        .any(|it| it == "alpha" || it == r#""alpha""# || it == "'alpha'");
-    let has_zeta = items
-        .iter()
-        .any(|it| it == "zeta" || it == r#""zeta""# || it == "'zeta'");
-    assert!(
-        has_alpha && has_zeta,
-        "expected alpha and zeta items; got: {items:?}\n{out}"
+        out.contains("    list:\n      - zeta\n      - alpha\n      - alpha\n"),
+        "{out}"
     );
 }
 
 #[test]
 fn emit_quotes_when_needed() {
+    // Plain text with spaces needs no quotes...
     let d = Doc::from_str("key: value with spaces\n").unwrap();
+    assert_eq!(d.to_string().unwrap(), "key: value with spaces\n");
+    // ...but a value that would read back differently does.
+    let mut d = Doc::from_str("key: x\n").unwrap();
+    d.visit_values_mut(&["key"], |e| {
+        *e = forgo_lib_yaml::Elem::string("a: b");
+        true
+    });
     let out = d.to_string().unwrap();
-
-    // Accept either single or double quotes for the value.
     let norm = norm_indent(&out);
-    let mut found = false;
-    for line in norm.lines() {
-        if line.starts_with("key: ") {
-            let rhs = &line["key: ".len()..];
-            found = has_quoted_value(rhs, "value with spaces");
-            break;
-        }
-    }
-    assert!(found, "expected quoted value with spaces; got:\n{out}");
+    let rhs = norm.lines().find_map(|l| l.strip_prefix("key: ")).unwrap();
+    assert!(has_quoted_value(rhs, "a: b"), "got:\n{out}");
 }
 
 #[test]
@@ -96,19 +72,13 @@ fn roundtrip_map_seq_scalar() {
 
 #[test]
 fn emit_quotes_for_yaml_keywords() {
+    // Typed scalars stay bare (and the flow list stays flow).
     let d = Doc::from_str("list: [true, null, 2]\n").unwrap();
+    assert_eq!(d.to_string().unwrap(), "list: [true, null, 2]\n");
+    // Strings that look like keywords are quoted.
+    let d = Doc::from_str("list: ['true', 'null', '2']\n").unwrap();
     let out = d.to_string().unwrap();
-    // Here we didn't normalize to strings, so typed scalars should remain bare.
-    // Accept either dash- or flow-style emission (depending on surrounding context),
-    // but since your emitter formats block style for list under a key, look for dash items:
-    let norm = norm_indent(&out);
-    let has_true = norm.lines().any(|l| l.trim_start() == "- true");
-    let has_null = norm.lines().any(|l| l.trim_start() == "- null");
-    let has_two = norm.lines().any(|l| l.trim_start() == "- 2");
-    assert!(
-        has_true && has_null && has_two,
-        "expected bare typed items; got:\n{out}"
-    );
+    assert_eq!(out, "list: ['true', 'null', '2']\n");
 }
 
 #[test]
