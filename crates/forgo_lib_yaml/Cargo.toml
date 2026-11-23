@@ -2,15 +2,13 @@
 name = "forgo_lib_yaml"
 version = "0.0.0"
 edition = "2024"
+rust-version = "1.88"
 publish = true
 license = "MIT"
-description = "Zero-dependency YAML 1.2.2 parser, emitter and editor that keeps comments and styles."
+description = "YAML 1.2.2 parser, emitter and editor with format-preserving edits. Passes the full official test suite; no dependencies, no unsafe."
 repository = "https://github.com/forgo/forgo-rust"
 readme = "README.md"
-
-[features]
-default = []
-# serde = ["dep:serde"]
+keywords = ["yaml", "parser", "editor", "comments", "config"]
+categories = ["parser-implementations", "encoding", "config"]
 
 [dependencies]
-# serde = { version = "1", features = ["derive"], optional = true }

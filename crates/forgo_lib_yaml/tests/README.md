@@ -1,33 +1,78 @@
 # forgo_lib_yaml tests
 
 ```sh
-scripts/fetch-yaml-test-suite.sh   # official suite data (pinned), once
+scripts/fetch-yaml-test-suite.sh   # official suite data, pinned (once)
 cargo test -p forgo_lib_yaml
 ```
 
+Without the suite data, the suite-based tests skip with a warning. They
+fail instead when `CI` or `YAML_TEST_SUITE_REQUIRED` is set.
+
 ## Compliance
 
-| target | what it checks |
-|--------|----------------|
-| `yaml_test_suite` | The official [yaml-test-suite](https://github.com/yaml/yaml-test-suite) data release `data-2022-01-17` (402 cases). For each case it checks the error expectation, the exact event stream (`test.event`), the JSON value (`in.json`), byte coverage, the normalized round trip, and presentation (the re-parsed `Doc` is equal). All six checks are gated by `yaml_test_suite/known_failures.txt` (empty). The report goes to `target/tmp/yaml-test-suite-report.md`. |
-| `yaml_spec_gaps` | YAML 1.2.2 rules the suite doesn't test: encodings and BOMs, CR/CRLF, NEL/LS/PS, spec examples missing from the suite, version directives, implicit key length, plus the decisions listed in [COMPLIANCE.md](../COMPLIANCE.md). Expected events are hand-derived from the spec. |
-| `yaml_robustness` | ~970k truncated and mutated suite inputs. Checks: no panics or hangs, the parser and composer agree, full coverage, content-preserving re-emission (presentation as a ratchet), and the nesting-depth limit. |
+| Target | Inputs | Result |
+|---|---|---|
+| `yaml_test_suite` | 402 official cases | 7 checks, all 100% |
+| `yaml_spec_gaps` | 38 hand-made cases | all pass |
+| `yaml_robustness` | 970,514 mutated inputs | no failures |
+| `yaml_editing` | 320 files, 1,741 edits | all exact |
 
-Without the suite data these tests skip loudly, or fail when `CI` or
-`YAML_TEST_SUITE_REQUIRED` is set. The `yaml_test_suite/` directory holds the
-harness's helpers: a JSON reader, `Doc` → JSON conversion, and the
-style-independent event normalizer.
+**`yaml_test_suite`** runs the official
+[yaml-test-suite](https://github.com/yaml/yaml-test-suite), release
+`data-2022-01-17`. For each case:
+
+- `error`: the input is rejected exactly when the case is invalid.
+- `events`: the event stream equals `test.event`, character for character.
+- `json`: the loaded data equals `in.json`.
+- `coverage`: every input byte is inside a token or a comment, or is
+  white space, so nothing is silently dropped.
+- `source`: untouched documents write back byte for byte.
+- `roundtrip`: rendered by the emitter and parsed again, the content is
+  unchanged (types, values, tags, anchors).
+- `presentation`: rendered and parsed again, the documents are equal,
+  comments and styles included.
+
+A failure must be listed in `yaml_test_suite/known_failures.txt`, which
+is empty, so any regression fails the build. The full report goes to
+`target/tmp/yaml-test-suite-report.md`.
+
+**`yaml_spec_gaps`** covers YAML 1.2.2 rules the suite doesn't test:
+UTF-16 and UTF-32 input, byte order marks, CR and CRLF line breaks, NEL,
+LS and PS, spec examples missing from the suite, `%YAML` versions, the
+1024-character key limit, and the choices listed in
+[COMPLIANCE.md](../COMPLIANCE.md). Expected events are derived from the
+spec by hand.
+
+**`yaml_robustness`** derives inputs from every suite case: each prefix,
+and at each character a replacement or an insertion of one of 25
+YAML-significant characters (`:`, `-`, `#`, quotes, tabs, line breaks, a
+byte order mark, …) or a deletion. On every result it checks:
+
+- it returns `Ok` or `Err`, never panics or hangs;
+- the event parser and the document loader agree on validity;
+- each input that parses is fully covered by tokens, comments and white
+  space;
+- each one writes back byte for byte, and its rendering reads back as
+  equal documents;
+- nesting deeper than the limit is an error, not a stack overflow.
+
+**`yaml_editing`** edits each document in many ways, one edit at a time,
+and compares the output with the exact expected text: only the edited
+entry may change. The inputs are the files in `editing/` (also with CRLF
+line breaks and without a final line break) and every valid suite case.
 
 ## Behaviour
 
-| target | tests | scope |
-|--------|------:|-------|
-| `api_tests` | 161 | constructors, accessors, builders, paths |
-| `feature_tests` | 45 | anchors, block scalars, comments, document streams, flow style, quoting, schemas, tags |
-| `integration_tests` | 16 | editing workflows and AST round trips |
-| `regression_tests` | 13 | reproductions and a property-based round trip |
-| `unit_tests` | 58 | scanner errors, document markers, emitter details |
-| `yaml_spec_1_2_2` | 671 | self-authored tests organized by spec chapter (`spec/ch_*.rs`); `Fixture`s check that parse → emit → parse is stable and gives an equal document |
+| Target | Tests | Covers |
+|---|---:|---|
+| `api_tests` | 161 | constructors, accessors, paths |
+| `feature_tests` | 45 | comments, block scalars, flow, tags |
+| `integration_tests` | 16 | editing workflows |
+| `regression_tests` | 13 | past bugs, property round trip |
+| `unit_tests` | 58 | scanner errors, markers, emitter |
+| `yaml_spec_1_2_2` | 671 | cases by spec chapter (`spec/`) |
 
-`common/` holds the `Fixture` helper. The `spec/` tests are written for this
-crate; the official suite above is the compliance reference.
+The `spec/` cases are written for this crate, and each one also checks
+that its input writes back byte for byte and that its rendering reads
+back equal (`common/`). The official suite above is the compliance
+reference.

@@ -1,6 +1,38 @@
-#![doc = include_str!("../README.md")]
+//! A YAML 1.2.2 parser, emitter and editor that keeps your files as they
+//! are. No dependencies, no `unsafe`.
+//!
+//! - [`Doc`] is a parsed document: read it ([`Doc::root`]), edit it
+//!   ([`Doc::root_mut`], [`Doc::visit_values_mut`] and friends) and write
+//!   it back ([`Doc::to_string`]). Untouched text stays byte for byte;
+//!   edits rewrite only what changed.
+//! - [`events`] is a streaming parser that yields [`Event`]s with source
+//!   [`Span`]s.
+//! - Values follow the YAML 1.2 core schema ([`Scalar`]); comments, styles,
+//!   anchors and tags are kept in each node's [`Meta`].
+//!
+//! ```
+//! use forgo_lib_yaml::{Doc, Node};
+//!
+//! let mut doc = Doc::from_str("version: 1.4.2   # bump on release\nname: app\n")?;
+//! doc.visit_values_mut(&["version"], |v| {
+//!     *v.node_mut() = Node::string("1.5.0");
+//!     true
+//! });
+//! assert_eq!(doc.to_string()?, "version: 1.5.0   # bump on release\nname: app\n");
+//! # Ok::<(), forgo_lib_yaml::Error>(())
+//! ```
+//!
+//! Compliance (all 402 cases of the official yaml-test-suite), benchmarks
+//! and comparisons with other crates are in the
+//! [README](https://github.com/forgo/forgo-rust/tree/HEAD/crates/forgo_lib_yaml#readme).
+
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+
+/// The README's examples, compiled and run as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;
 
 mod ast;
 mod compose;
@@ -39,9 +71,7 @@ impl Default for ParseOptions {
 // Layer 1: Simple "Just Works" API
 // ============================================================================
 
-/// Parse a single YAML document from a string
-///
-/// This is a convenience wrapper around [`Doc::from_str`].
+/// Parse the first document of a YAML stream (same as [`Doc::from_str`]).
 ///
 /// # Examples
 ///
@@ -55,9 +85,7 @@ pub fn parse(input: &str) -> Result<Doc, Error> {
     Doc::from_str(input)
 }
 
-/// Serialize a document to a YAML string
-///
-/// This is a convenience wrapper around [`Doc::to_string`].
+/// Write a document as YAML (same as [`Doc::to_string`]).
 ///
 /// # Examples
 ///
@@ -72,10 +100,9 @@ pub fn stringify(doc: &Doc) -> Result<String, Error> {
     doc.to_string()
 }
 
-/// Parse the first document of a YAML byte stream: UTF-8, UTF-16 or UTF-32
-/// (detected per YAML 1.2.2 §5.2, with or without a byte order mark).
-///
-/// This is a convenience wrapper around [`Doc::from_slice`].
+/// Parse the first document of a YAML byte stream: UTF-8, UTF-16 or UTF-32,
+/// detected per YAML 1.2.2 §5.2, with or without a byte order mark (same as
+/// [`Doc::from_slice`]).
 ///
 /// # Examples
 ///
@@ -91,9 +118,7 @@ pub fn parse_bytes(bytes: &[u8]) -> Result<Doc, Error> {
     Doc::from_slice(bytes)
 }
 
-/// Parse multiple YAML documents from a stream (separated by --- or ...)
-///
-/// This is a convenience wrapper around [`Doc::from_stream`].
+/// Parse every document of a YAML stream (same as [`Doc::from_stream`]).
 ///
 /// # Examples
 ///
