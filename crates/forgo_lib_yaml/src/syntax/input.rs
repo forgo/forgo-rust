@@ -8,12 +8,18 @@
 use crate::ast::Error;
 use std::borrow::Cow;
 
+/// The character encoding of a YAML byte stream.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Encoding {
+    /// UTF-8.
     Utf8,
+    /// UTF-16, little-endian.
     Utf16Le,
+    /// UTF-16, big-endian.
     Utf16Be,
+    /// UTF-32, little-endian.
     Utf32Le,
+    /// UTF-32, big-endian.
     Utf32Be,
 }
 

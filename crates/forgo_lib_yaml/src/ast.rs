@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/src/ast.rs
 use std::fmt;
 use std::fs;
 use std::path::Path;
@@ -7,10 +6,12 @@ use std::sync::Arc;
 use crate::emitter::Emitter;
 pub use crate::syntax::{BlockHeader, Chomping};
 
-/// Path segment for traversal. `*` is a wildcard.
+/// One step of a path (see [`IntoPath`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Seg {
+    /// The mapping entry with this key (the last one if the key repeats).
     Key(String),
+    /// `*`: every entry (see each `Doc::visit_*` method for sequences).
     Wildcard,
 }
 
@@ -24,12 +25,8 @@ impl From<&str> for Seg {
     }
 }
 
-/// Trait for types that can be converted into a path for traversal
-///
-/// This trait allows multiple convenient syntaxes for specifying paths:
-/// - `&["jobs", "*", "steps"]` - array literal of string slices
-/// - `&[Seg::Key("jobs".into()), Seg::Wildcard]` - explicit Seg types
-/// - `vec!["jobs", "*"]` - vector of string slices
+/// A path into a document: `&["jobs", "*", "steps"]`, a `Vec<&str>`, or
+/// [`Seg`]s. The string `"*"` is [`Seg::Wildcard`].
 ///
 /// # Examples
 ///
@@ -44,6 +41,7 @@ impl From<&str> for Seg {
 /// doc.visit_sequences_mut(&path[..], |s| { s.len(); false });
 /// ```
 pub trait IntoPath {
+    /// The path's segments.
     fn into_path(self) -> Vec<Seg>;
 }
 
@@ -89,15 +87,21 @@ impl IntoPath for Vec<&str> {
     }
 }
 
-/// Scalar with typing. If the source was quoted, we always store it as `Str`.
+/// A scalar value. Plain scalars are typed by the YAML 1.2 core schema;
+/// quoted and block scalars are always strings, and tags such as `!!str`
+/// override.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Scalar {
+    /// A string.
     Str(String),
+    /// `true` or `false`, in any core-schema spelling (`True`, `FALSE`).
     Bool(bool),
-    /// Numeric literal; we keep the original text for stable re-emission.
+    /// An integer or float, kept as written (`0x1F`, `1e3`, `.inf`).
     Num {
+        /// The number as written.
         text: String,
     },
+    /// `null`, `~`, an empty value, or another core-schema spelling.
     Null,
 }
 
@@ -106,22 +110,22 @@ impl Scalar {
     // Type Guards
     // ========================================================================
 
-    /// Check if this scalar is a string
+    /// Is this a string?
     pub fn is_str(&self) -> bool {
         matches!(self, Scalar::Str(_))
     }
 
-    /// Check if this scalar is a boolean
+    /// Is this a boolean?
     pub fn is_bool(&self) -> bool {
         matches!(self, Scalar::Bool(_))
     }
 
-    /// Check if this scalar is a number
+    /// Is this a number?
     pub fn is_num(&self) -> bool {
         matches!(self, Scalar::Num { .. })
     }
 
-    /// Check if this scalar is null
+    /// Is this null?
     pub fn is_null(&self) -> bool {
         matches!(self, Scalar::Null)
     }
@@ -130,7 +134,7 @@ impl Scalar {
     // Type Conversions
     // ========================================================================
 
-    /// Get string value if this scalar is a string
+    /// The string, if this is one.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Scalar::Str(s) => Some(s),
@@ -138,7 +142,7 @@ impl Scalar {
         }
     }
 
-    /// Get boolean value if this scalar is a boolean
+    /// The boolean, if this is one.
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Scalar::Bool(b) => Some(*b),
@@ -170,7 +174,7 @@ impl Scalar {
         }
     }
 
-    /// Get raw number text without parsing
+    /// A number's text as written.
     pub fn num_text(&self) -> Option<&str> {
         match self {
             Scalar::Num { text } => Some(text),
@@ -178,7 +182,8 @@ impl Scalar {
         }
     }
 
-    /// Convert scalar to string representation
+    /// The value as text: a string itself, `true`/`false`, a number as
+    /// written, or `null`.
     // Public API predating `Display`; kept for compatibility.
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
@@ -192,7 +197,8 @@ impl Scalar {
     }
 }
 
-/// How a node is written.
+/// How a node is written. Parsed nodes record theirs; the emitter honors
+/// a style when the value allows it (see [`Meta::style`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Style {
     /// A plain scalar.
@@ -211,10 +217,9 @@ pub enum Style {
     Flow,
 }
 
-/// The byte range a node had in its source, when it was parsed. Always
-/// equal to any other `SourceSpan`, so documents compare by content and
-/// presentation, not by origin. (Byte offsets only, to keep nodes small;
-/// line and column can be computed from the source text.)
+/// The byte range a parsed node had in its source (the input string).
+/// Always equal to any other `SourceSpan`, so documents compare by content
+/// and presentation, not by origin.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SourceSpan(Option<(u32, u32)>);
 
@@ -251,7 +256,7 @@ impl PartialEq for SourceSpan {
 /// byte range in it, and its document-level fields as parsed. Writing a
 /// document back copies the source text of everything that didn't change
 /// (see `preserve`). Ignored by `==`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Origin {
     /// The whole source stream (shared by its documents).
     pub(crate) source: Option<Arc<str>>,
@@ -272,16 +277,26 @@ impl PartialEq for Origin {
     }
 }
 
-/// Node metadata we preserve and re-emit.
+impl fmt::Debug for Origin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.source {
+            Some(_) => write!(f, "Origin({}..{})", self.range.0, self.range.1),
+            None => f.write_str("Origin(None)"),
+        }
+    }
+}
+
+/// A node's presentation: comments, properties and style.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Meta {
-    /// Full-line comments immediately preceding this node (without the '#', trimmed).
+    /// Full-line comments above the node (or its mapping entry), without
+    /// `#`, trimmed.
     pub leading_comments: Vec<String>,
-    /// Same-line comment trailing the node/value (without the '#', trimmed).
+    /// The comment at the end of the node's line, without `#`, trimmed.
     pub trailing_comment: Option<String>,
-    /// Optional anchor name attached to this node: `&name`.
+    /// The anchor name, without `&`.
     pub anchor: Option<String>,
-    /// Optional tag, as written: `!str`, `!!str`, `!<tag:example.com,2000:app/thing>`, etc.
+    /// The tag as written: `!local`, `!!str`, `!e!suffix` or `!<uri>`.
     pub tag: Option<String>,
     /// How the node was written. `None` (nodes built in code) lets the
     /// emitter choose. The emitter honors a style when the value allows it.
@@ -313,10 +328,12 @@ impl Meta {
     }
 }
 
-/// An element pairs a node with metadata (comments, anchor).
+/// A node and its presentation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Elem {
+    /// The value.
     pub node: Node,
+    /// Comments, properties and style.
     pub meta: Meta,
 }
 impl Elem {
@@ -324,7 +341,7 @@ impl Elem {
     // Constructors
     // ========================================================================
 
-    /// Create element from node with default metadata
+    /// An element with no comments, properties or style.
     pub fn new(node: Node) -> Self {
         Self {
             node,
@@ -332,32 +349,32 @@ impl Elem {
         }
     }
 
-    /// Create element with empty map
+    /// An empty mapping.
     pub fn map() -> Self {
         Self::new(Node::map())
     }
 
-    /// Create element with empty sequence
+    /// An empty sequence.
     pub fn seq() -> Self {
         Self::new(Node::seq())
     }
 
-    /// Create element with string scalar
+    /// A string. The emitter quotes it only when it has to.
     pub fn string(s: impl Into<String>) -> Self {
         Self::new(Node::string(s))
     }
 
-    /// Create element with number scalar
+    /// A number, written as `n` displays.
     pub fn number(n: impl ToString) -> Self {
         Self::new(Node::number(n))
     }
 
-    /// Create element with boolean scalar
+    /// A boolean.
     pub fn boolean(b: bool) -> Self {
         Self::new(Node::boolean(b))
     }
 
-    /// Create element with null scalar
+    /// A null.
     pub fn null() -> Self {
         Self::new(Node::null())
     }
@@ -366,19 +383,19 @@ impl Elem {
     // Fluent Metadata Builders
     // ========================================================================
 
-    /// Add trailing comment (same line as value)
+    /// With a comment at the end of its line.
     pub fn with_comment(mut self, comment: impl Into<String>) -> Self {
         self.meta.trailing_comment = Some(comment.into());
         self
     }
 
-    /// Add leading comments (full lines before value)
+    /// With full-line comments above it.
     pub fn with_leading_comments(mut self, comments: Vec<String>) -> Self {
         self.meta.leading_comments = comments;
         self
     }
 
-    /// Add anchor reference (&name)
+    /// With an anchor (`&name`), for aliases to refer to.
     pub fn with_anchor(mut self, anchor: impl Into<String>) -> Self {
         self.meta.anchor = Some(anchor.into());
         self
@@ -400,7 +417,7 @@ impl Elem {
         self
     }
 
-    /// Emit with the given style (when the value allows it).
+    /// With a style, used when the value allows it.
     pub fn with_style(mut self, style: Style) -> Self {
         self.meta.style = Some(style);
         self
@@ -410,35 +427,36 @@ impl Elem {
     // Accessors
     // ========================================================================
 
-    /// Convenience: borrow the underlying node.
+    /// The value.
     pub fn node(&self) -> &Node {
         &self.node
     }
 
-    /// Convenience: mutably borrow the underlying node.
+    /// The value, mutably.
     pub fn node_mut(&mut self) -> &mut Node {
         &mut self.node
     }
 }
 
-/// Map key - can be a simple string or a complex element (collection)
+/// A mapping key.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MapKey {
-    /// Simple scalar key (most common case)
+    /// A plain string key without properties (most keys).
     Str(String),
-    /// Complex key (sequence or mapping as a key)
+    /// Any other key: quoted or typed (`"a"`, `200`, `true`, `~`), with
+    /// an anchor or tag, an alias, or a collection.
     Complex(Box<Elem>),
 }
 
 impl MapKey {
-    /// Create a string key
+    /// A plain string key.
     // Public API (takes `impl Into<String>`, so it isn't `FromStr`).
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: impl Into<String>) -> Self {
         MapKey::Str(s.into())
     }
 
-    /// Create a complex key
+    /// A key from any element.
     pub fn from_elem(elem: Elem) -> Self {
         MapKey::Complex(Box::new(elem))
     }
@@ -459,7 +477,7 @@ impl MapKey {
         }
     }
 
-    /// Get as element if this is a complex key
+    /// The element of a `Complex` key.
     pub fn as_elem(&self) -> Option<&Elem> {
         match self {
             MapKey::Str(_) => None,
@@ -467,12 +485,12 @@ impl MapKey {
         }
     }
 
-    /// Check if this is a string key
+    /// Is this a `Str` key?
     pub fn is_str(&self) -> bool {
         matches!(self, MapKey::Str(_))
     }
 
-    /// Check if this is a complex key
+    /// Is this a `Complex` key?
     pub fn is_complex(&self) -> bool {
         matches!(self, MapKey::Complex(_))
     }
@@ -578,13 +596,17 @@ impl From<&str> for MapKey {
     }
 }
 
-/// AST node for the YAML subset.
+/// A YAML node.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
+    /// A mapping, entries in source order. Keys may repeat; lookups use
+    /// the last one (see [`Doc::check_unique_keys`]).
     Map(Vec<(MapKey, Elem)>),
+    /// A sequence.
     Seq(Vec<Elem>),
+    /// A scalar.
     Scalar(Scalar),
-    /// Alias reference: `*name`
+    /// An alias (`*name`) to the node anchored `&name` before it.
     Alias(String),
 }
 impl Node {
@@ -592,27 +614,27 @@ impl Node {
     // Type Guards
     // ========================================================================
 
-    /// Check if this node is a map
+    /// Is this a mapping?
     pub fn is_map(&self) -> bool {
         matches!(self, Node::Map(_))
     }
 
-    /// Check if this node is a sequence
+    /// Is this a sequence?
     pub fn is_seq(&self) -> bool {
         matches!(self, Node::Seq(_))
     }
 
-    /// Check if this node is a scalar
+    /// Is this a scalar?
     pub fn is_scalar(&self) -> bool {
         matches!(self, Node::Scalar(_))
     }
 
-    /// Check if this node is an alias
+    /// Is this an alias?
     pub fn is_alias(&self) -> bool {
         matches!(self, Node::Alias(_))
     }
 
-    /// Check if this node is a null scalar
+    /// Is this a null scalar?
     pub fn is_null(&self) -> bool {
         matches!(self, Node::Scalar(Scalar::Null))
     }
@@ -621,7 +643,7 @@ impl Node {
     // Type Conversions (Safe Downcasts)
     // ========================================================================
 
-    /// Get map if this node is a map
+    /// The entries, if this is a mapping.
     pub fn as_map(&self) -> Option<&Vec<(MapKey, Elem)>> {
         match self {
             Node::Map(m) => Some(m),
@@ -629,7 +651,7 @@ impl Node {
         }
     }
 
-    /// Get mutable map if this node is a map
+    /// The entries, mutably, if this is a mapping.
     pub fn as_map_mut(&mut self) -> Option<&mut Vec<(MapKey, Elem)>> {
         match self {
             Node::Map(m) => Some(m),
@@ -637,7 +659,7 @@ impl Node {
         }
     }
 
-    /// Get sequence if this node is a sequence
+    /// The items, if this is a sequence.
     pub fn as_seq(&self) -> Option<&Vec<Elem>> {
         match self {
             Node::Seq(v) => Some(v),
@@ -645,12 +667,12 @@ impl Node {
         }
     }
 
-    /// Get mutable sequence if this node is a sequence (alias for seq_mut)
+    /// The items, mutably, if this is a sequence.
     pub fn as_seq_mut(&mut self) -> Option<&mut Vec<Elem>> {
         self.seq_mut()
     }
 
-    /// Get mutable sequence (legacy method, prefer as_seq_mut)
+    /// Same as [`Node::as_seq_mut`].
     pub fn seq_mut(&mut self) -> Option<&mut Vec<Elem>> {
         match self {
             Node::Seq(v) => Some(v),
@@ -658,7 +680,7 @@ impl Node {
         }
     }
 
-    /// Get scalar if this node is a scalar
+    /// The scalar, if this is one.
     pub fn as_scalar(&self) -> Option<&Scalar> {
         match self {
             Node::Scalar(s) => Some(s),
@@ -666,7 +688,7 @@ impl Node {
         }
     }
 
-    /// Get mutable scalar if this node is a scalar
+    /// The scalar, mutably, if this is one.
     pub fn as_scalar_mut(&mut self) -> Option<&mut Scalar> {
         match self {
             Node::Scalar(s) => Some(s),
@@ -678,27 +700,27 @@ impl Node {
     // Scalar Convenience Methods (delegate to Scalar)
     // ========================================================================
 
-    /// Get string value if this node is a string scalar
+    /// The string, if this is a string scalar.
     pub fn as_str(&self) -> Option<&str> {
         self.as_scalar().and_then(|s| s.as_str())
     }
 
-    /// Get boolean value if this node is a boolean scalar
+    /// The boolean, if this is a boolean scalar.
     pub fn as_bool(&self) -> Option<bool> {
         self.as_scalar().and_then(|s| s.as_bool())
     }
 
-    /// Get integer value if this node is a number scalar (parses text)
+    /// The number as an `i64` (decimal, `0o` octal or `0x` hex).
     pub fn as_i64(&self) -> Option<i64> {
         self.as_scalar().and_then(|s| s.as_i64())
     }
 
-    /// Get float value if this node is a number scalar (parses text)
+    /// The number as an `f64`, including `.inf` and `.nan`.
     pub fn as_f64(&self) -> Option<f64> {
         self.as_scalar().and_then(|s| s.as_f64())
     }
 
-    /// Get unsigned integer value if this node is a number scalar (parses text)
+    /// The number as a `u64` (decimal, `0o` octal or `0x` hex).
     pub fn as_u64(&self) -> Option<u64> {
         self.as_scalar().and_then(|s| s.as_u64())
     }
@@ -707,40 +729,42 @@ impl Node {
     // Node Constructors
     // ========================================================================
 
-    /// Create an empty map node
+    /// An empty mapping.
     pub fn map() -> Self {
         Node::Map(vec![])
     }
 
-    /// Create an empty sequence node
+    /// An empty sequence.
     pub fn seq() -> Self {
         Node::Seq(vec![])
     }
 
-    /// Create a string scalar node
+    /// A string.
     pub fn string(s: impl Into<String>) -> Self {
         Node::Scalar(Scalar::Str(s.into()))
     }
 
-    /// Create a number scalar node
+    /// A number, written as `n` displays.
     pub fn number(n: impl ToString) -> Self {
         Node::Scalar(Scalar::Num {
             text: n.to_string(),
         })
     }
 
-    /// Create a boolean scalar node
+    /// A boolean.
     pub fn boolean(b: bool) -> Self {
         Node::Scalar(Scalar::Bool(b))
     }
 
-    /// Create a null scalar node
+    /// A null.
     pub fn null() -> Self {
         Node::Scalar(Scalar::Null)
     }
 }
 
-/// Document root wrapper.
+/// A YAML document: the root node, the comments after it, directives and
+/// markers. A parsed document also keeps its source text, so
+/// [`Doc::to_string`] writes it back unchanged except where it was edited.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Doc {
     pub(crate) root: Elem,
@@ -748,13 +772,13 @@ pub struct Doc {
     pub(crate) had_leading_blank: bool,
     pub(crate) saw_carriage_return: bool,
 
-    /// Optional YAML version directive, e.g. (1,2) for `%YAML 1.2`
+    /// The `%YAML` directive: `(1, 2)` for `%YAML 1.2`.
     pub yaml_version: Option<(u8, u8)>,
-    /// Collected TAG directives as (handle, prefix), e.g. ("!e!", "tag:example.com,2000:app/")
+    /// `%TAG` directives as (handle, prefix): `("!e!", "tag:example.com,2000:")`.
     pub tag_handles: Vec<(String, String)>,
-    /// Was this document explicitly started with `---`?
+    /// The document starts with `---`.
     pub explicit_start: bool,
-    /// Was this document explicitly ended with `...`?
+    /// The document ends with `...`.
     pub explicit_end: bool,
     /// Comments after the document's last node.
     pub(crate) footer_comments: Vec<String>,
@@ -764,18 +788,26 @@ pub struct Doc {
     pub(crate) origin: Origin,
 }
 
-/// Error type (no deps).
+/// An error from parsing, checking, writing, or file I/O.
 #[derive(Debug)]
 pub enum Error {
+    /// Reading or writing a file failed.
     Io(std::io::Error),
+    /// A document breaks a rule beyond syntax (from
+    /// [`Doc::check_unique_keys`]).
     Parse(String),
-    /// A syntax error at a 1-based line and column.
+    /// The input isn't valid YAML.
     Syntax {
+        /// 1-based line.
         line: usize,
+        /// 1-based column, in characters.
         col: usize,
+        /// What is wrong.
         msg: String,
     },
+    /// The document can't be written (nested too deeply).
     Emit(String),
+    /// Formatting output failed.
     Fmt(std::fmt::Error),
 }
 
@@ -800,22 +832,25 @@ impl fmt::Display for Error {
             Error::Parse(s) => write!(f, "Parse error: {s}"),
             Error::Syntax { line, col, msg } => write!(f, "Parse error at {line}:{col}: {msg}"),
             Error::Emit(s) => write!(f, "Emit error: {s}"),
-            Error::Fmt(e) => write!(f, "Format error: ${e}"),
+            Error::Fmt(e) => write!(f, "Format error: {e}"),
         }
     }
 }
 
 impl Doc {
-    // Accessors for tests / users
+    /// The `%YAML` directive, if any.
     pub fn yaml_version(&self) -> Option<(u8, u8)> {
         self.yaml_version
     }
+    /// The `%TAG` directives, as (handle, prefix).
     pub fn tag_handles(&self) -> &[(String, String)] {
         &self.tag_handles
     }
+    /// The document starts with `---`.
     pub fn explicit_start(&self) -> bool {
         self.explicit_start
     }
+    /// The document ends with `...`.
     pub fn explicit_end(&self) -> bool {
         self.explicit_end
     }
@@ -1080,15 +1115,44 @@ impl Doc {
                 out.push('\n');
             }
         }
-        for c in &self.footer_comments {
-            out.push('#');
-            if !c.is_empty() {
-                out.push(' ');
-                out.push_str(c);
+        if !self.footer_on_end_line() {
+            for c in &self.footer_comments {
+                push_comment_line(c, out);
             }
-            out.push('\n');
         }
         Ok(())
+    }
+
+    /// An empty root takes every comment above `...` as its own, so footer
+    /// comments go on the `...` line (the first) and after it.
+    fn footer_on_end_line(&self) -> bool {
+        self.explicit_end
+            && !self.footer_comments.is_empty()
+            && !self.is_placeholder()
+            && self.root.meta.anchor.is_none()
+            && self.root.meta.tag.is_none()
+            && matches!(&self.root.node, Node::Scalar(sc)
+                if crate::emitter_helpers::scalar_repr(sc, &self.root.meta, crate::emitter_helpers::ROOT_CTX)
+                    == crate::emitter_helpers::Repr::Empty)
+    }
+
+    /// Write `...` (with the footer comments when they follow it).
+    fn emit_end(&self, out: &mut String) {
+        out.push_str("...");
+        if self.footer_on_end_line() {
+            let (first, rest) = self.footer_comments.split_first().expect("footer comments");
+            out.push_str(" #");
+            if !first.is_empty() {
+                out.push(' ');
+                out.push_str(first);
+            }
+            out.push('\n');
+            for c in rest {
+                push_comment_line(c, out);
+            }
+        } else {
+            out.push('\n');
+        }
     }
 
     /// Write a stream of documents, separated by `---` (and `...` where
@@ -1149,7 +1213,7 @@ impl Doc {
                 out.push('\n');
                 self.emit_body_with(out, true)?;
                 if self.explicit_end {
-                    out.push_str("...\n");
+                    self.emit_end(out);
                 }
                 return Ok(());
             }
@@ -1169,24 +1233,27 @@ impl Doc {
         }
         self.emit_body_with(out, header_written)?;
         if self.explicit_end {
-            out.push_str("...\n");
+            self.emit_end(out);
         }
         Ok(())
     }
 
-    /// Read a file and parse.
+    /// Read a file and parse its first document (see [`Doc::from_str`]).
     pub fn read_file(path: &Path) -> Result<Self, Error> {
         let s = fs::read_to_string(path).map_err(Error::Io)?;
         Self::from_str(&s)
     }
 
-    /// Write to file (overwrite).
+    /// Write the document to a file, replacing it (see [`Doc::to_string`]).
     pub fn write_file(&self, path: &Path) -> Result<(), Error> {
         let s = self.to_string()?;
         fs::write(path, s).map_err(Error::Io)
     }
 
-    /// Visit all nodes at `path`, applying `f` to sequences.
+    /// Call `f` on each sequence at `path`, and return whether any call
+    /// returned `true` (return whether you changed something). `*` matches
+    /// every entry of a mapping and every item of a sequence. A path that
+    /// doesn't exist, or ends at something else, calls nothing.
     pub fn visit_sequences_mut<P, F>(&mut self, path: P, mut f: F) -> bool
     where
         P: IntoPath,
@@ -1235,6 +1302,9 @@ impl Doc {
         go(&mut self.root, &path, &mut f)
     }
 
+    /// Call `f` on each mapping at `path`, and return whether any call
+    /// returned `true`. `*` matches every mapping entry; a sequence on the
+    /// way is crossed without a segment (the path continues in each item).
     pub fn visit_maps_mut<P, F>(&mut self, path: P, mut f: F) -> bool
     where
         P: IntoPath,
@@ -1276,6 +1346,8 @@ impl Doc {
         hit
     }
 
+    /// Call `f` on each node at `path`, and return whether any call
+    /// returned `true`. Paths work as in [`Doc::visit_maps_mut`].
     pub fn visit_values_mut<P, F>(&mut self, path: P, mut f: F) -> bool
     where
         P: IntoPath,
@@ -1355,16 +1427,26 @@ impl Doc {
         go(&self.root, &mut Vec::new())
     }
 
-    /// Borrow the root element.
+    /// The root node.
     pub fn root(&self) -> &Elem {
         &self.root
     }
 
-    /// Mutably borrow the root element.
+    /// The root node, for editing.
     pub fn root_mut(&mut self) -> &mut Elem {
         self.origin.touched = true;
         &mut self.root
     }
+}
+
+/// `# text` on its own line.
+fn push_comment_line(c: &str, out: &mut String) {
+    out.push('#');
+    if !c.is_empty() {
+        out.push(' ');
+        out.push_str(c);
+    }
+    out.push('\n');
 }
 
 impl std::str::FromStr for Doc {

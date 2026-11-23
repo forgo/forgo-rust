@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/spec/ch_6_structural.rs
 //! YAML 1.2.2 Chapter 6: Structural Productions
 //!
 //! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-6-structural-productions

@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/api/mod.rs
 //! Common utilities and test helpers for API tests
 
 use forgo_lib_yaml::{Doc, Elem, Node, Scalar};

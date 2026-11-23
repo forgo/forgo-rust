@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/api/elem_builders.rs
 //! Tests for Elem construction and fluent builders
 //!
 //! Covers:

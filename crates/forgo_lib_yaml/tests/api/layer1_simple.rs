@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/api/layer1_simple.rs
 //! Tests for Layer 1 Simple API - top-level convenience functions
 //!
 //! Covers:

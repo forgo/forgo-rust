@@ -59,8 +59,9 @@ pub(crate) struct Token<'a> {
 /// A comment, recorded on the side; the parser never sees it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Comment<'a> {
-    /// From `#` to the end of the line (line break excluded).
+    /// Where the `#` is.
     pub start: Mark,
+    /// The end of the line (before the line break).
     pub end: Mark,
     /// The text after `#`, untrimmed.
     pub text: &'a str,

@@ -381,6 +381,24 @@ impl Emitter {
         let mut seq_step = self.seq_indent;
         match k {
             MapKey::Str(s) if plain_ok(s, key_ctx) => out.push_str(s),
+            // At column 0 a key like `--- x` would read as a document
+            // marker; `? --- x` keeps it a plain key.
+            MapKey::Str(s)
+                if key_ctx.line_start
+                    && plain_ok(
+                        s,
+                        Ctx {
+                            line_start: false,
+                            ..key_ctx
+                        },
+                    ) =>
+            {
+                out.push_str("? ");
+                out.push_str(s);
+                out.push('\n');
+                emit_indent(indent, out);
+                seq_step = self.indent;
+            }
             MapKey::Str(s) if !s.contains('\n') && s.chars().count() <= 1000 => emit_quoted(s, out),
             // A multi-line plain key: `? a`, an empty line, `b`.
             MapKey::Str(s) if plain_ok(s, BLOCK_VALUE) => {

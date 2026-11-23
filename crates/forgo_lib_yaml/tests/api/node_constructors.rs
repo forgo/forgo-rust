@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/api/node_constructors.rs
 //! Tests for Node construction helpers
 //!
 //! Covers:

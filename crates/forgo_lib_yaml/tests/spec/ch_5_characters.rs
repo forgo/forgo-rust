@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/spec/ch_5_characters.rs
 //! YAML 1.2.2 Chapter 5: Character Productions
 //!
 //! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-5-character-productions

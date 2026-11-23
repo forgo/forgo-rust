@@ -1,6 +1,6 @@
-// crates/forgo_lib_yaml/src/lib.rs
 #![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 mod ast;
 mod compose;

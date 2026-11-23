@@ -3,14 +3,9 @@
 //! or a hang), and the event parser and the composer must agree on it.
 //! Whenever it parses:
 //! - every byte is covered by a token, a comment or white space;
-//! - emitting its documents gives YAML that parses back to the same
-//!   content (normalized events).
-//!
-//! Presentation (re-parsed documents equal, comments and styles included)
-//! is exact on the suite, the spec-gap corpus and the fixtures; on these
-//! mutated inputs a few comments in unusual positions (between `?` and a
-//! key, inside flow pairs) move, so it is a ratchet: the count of such
-//! inputs may only go down.
+//! - writing the untouched documents gives the input back, byte for byte;
+//! - rendering them (`Doc::reformat`) gives YAML that parses back to equal
+//!   documents: same content, comments, styles and spellings.
 //!
 //! Skips quietly when the suite data is missing (see yaml_test_suite.rs).
 
@@ -20,13 +15,6 @@ mod normalize;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
-
-/// Upper bound for mutated inputs whose re-parsed documents differ in
-/// presentation (ratchet: lower it when fixes land, never raise it).
-const MAX_PRESENTATION_DIFFS: usize = 48;
-/// Report presentation differences as problems (for investigating them).
-const SHOW_PRESENTATION: bool = false;
-static PRESENTATION_DIFFS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 const MUTATIONS: &[&str] = &[
     ":", "-", "?", "[", "]", "{", "}", ",", "#", "'", "\"", "|", ">", "&", "*", "!", "%", "@",
@@ -117,10 +105,6 @@ fn check(input: &str) -> Option<String> {
         again.into_iter().filter(|d| !bare(d)).collect(),
     );
     if again != docs {
-        PRESENTATION_DIFFS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if !SHOW_PRESENTATION {
-            return None;
-        }
         let strip = |d: &[forgo_lib_yaml::Doc]| -> Vec<String> {
             let text = format!("{d:#?}");
             let mut out = Vec::new();
@@ -129,6 +113,9 @@ fn check(input: &str) -> Option<String> {
                 if depth > 0 {
                     depth += line.matches('(').count();
                     depth = depth.saturating_sub(line.matches(')').count());
+                    continue;
+                }
+                if line.trim_start().starts_with("origin: Origin(") {
                     continue;
                 }
                 if line.trim_start().starts_with("span: SourceSpan(") {
@@ -260,12 +247,7 @@ fn mutated_suite_inputs_never_panic() {
             }
         }
     }
-    let diffs = PRESENTATION_DIFFS.load(std::sync::atomic::Ordering::Relaxed);
-    println!("robustness: {total} variants checked; {diffs} with presentation differences");
-    assert!(
-        diffs <= MAX_PRESENTATION_DIFFS,
-        "presentation differences went up: {diffs} > {MAX_PRESENTATION_DIFFS}"
-    );
+    println!("robustness: {total} variants checked");
     assert!(
         problems.is_empty(),
         "{} problems:\n{}",

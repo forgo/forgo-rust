@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/src/emitter_helpers.rs
 //! How scalars are written: which styles can represent a value in a given
 //! context, and the text for each style.
 //!
@@ -35,6 +34,15 @@ pub(crate) struct Ctx {
     /// read as document markers.
     pub line_start: bool,
 }
+
+/// A document root.
+pub(crate) const ROOT_CTX: Ctx = Ctx {
+    flow: false,
+    key: false,
+    block_ok: true,
+    empty_ok: true,
+    line_start: false,
+};
 
 /// The chosen representation of a scalar.
 #[derive(Clone, Debug, PartialEq)]

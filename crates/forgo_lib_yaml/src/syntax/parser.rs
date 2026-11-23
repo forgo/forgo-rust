@@ -793,6 +793,7 @@ pub struct Events<'a> {
 }
 
 impl<'a> Events<'a> {
+    /// The events of `src` (same as [`events`](crate::events)).
     pub fn new(src: &'a str) -> Self {
         Events {
             parser: Parser::new(src),

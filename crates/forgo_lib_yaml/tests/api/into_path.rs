@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/api/into_path.rs
 //! Tests for IntoPath trait and path handling
 //!
 //! Covers:

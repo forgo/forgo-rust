@@ -16,11 +16,14 @@ pub struct Mark {
 /// A half-open source range `start..end`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Span {
+    /// The first character.
     pub start: Mark,
+    /// Just past the last character.
     pub end: Mark,
 }
 
 impl Span {
+    /// The range `start..end`.
     pub fn new(start: Mark, end: Mark) -> Self {
         Span { start, end }
     }
@@ -29,10 +32,15 @@ impl Span {
 /// How a scalar was written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ScalarStyle {
+    /// Unquoted.
     Plain,
+    /// `'single quoted'`
     SingleQuoted,
+    /// `"double quoted"`
     DoubleQuoted,
+    /// A `|` block scalar.
     Literal,
+    /// A `>` block scalar.
     Folded,
 }
 
@@ -51,6 +59,7 @@ pub enum Chomping {
 /// The indicators written in a literal or folded block scalar header.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct BlockHeader {
+    /// The chomping indicator.
     pub chomping: Chomping,
     /// The explicit indentation indicator (1-9), if written.
     pub indent: Option<u8>,
@@ -75,6 +84,7 @@ impl Tag<'_> {
         self.resolved == "!"
     }
 
+    /// Detach the tag from the input it borrows from.
     pub fn into_owned(self) -> Tag<'static> {
         Tag {
             handle: Cow::Owned(self.handle.into_owned()),
@@ -87,8 +97,11 @@ impl Tag<'_> {
 /// One parse event. Values borrow from the input where possible.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event<'a> {
+    /// The start of the stream (always first).
     StreamStart,
+    /// The end of the stream (always last).
     StreamEnd,
+    /// The start of a document.
     DocumentStart {
         /// The document began with `---`.
         explicit: bool,
@@ -97,31 +110,50 @@ pub enum Event<'a> {
         /// `%TAG` directives declared for this document, as (handle, prefix).
         tags: Vec<(Cow<'a, str>, Cow<'a, str>)>,
     },
+    /// The end of a document.
     DocumentEnd {
         /// The document ended with `...`.
         explicit: bool,
     },
+    /// The start of a sequence; its items follow, then `SequenceEnd`.
     SequenceStart {
+        /// The anchor name (without `&`), if any.
         anchor: Option<Cow<'a, str>>,
+        /// The tag, if any.
         tag: Option<Tag<'a>>,
+        /// Written in flow style (`[a, b]`).
         flow: bool,
     },
+    /// The end of a sequence.
     SequenceEnd,
+    /// The start of a mapping; keys and values alternate, then
+    /// `MappingEnd`.
     MappingStart {
+        /// The anchor name (without `&`), if any.
         anchor: Option<Cow<'a, str>>,
+        /// The tag, if any.
         tag: Option<Tag<'a>>,
+        /// Written in flow style (`{a: 1}`).
         flow: bool,
     },
+    /// The end of a mapping.
     MappingEnd,
+    /// A scalar.
     Scalar {
+        /// The anchor name (without `&`), if any.
         anchor: Option<Cow<'a, str>>,
+        /// The tag, if any.
         tag: Option<Tag<'a>>,
+        /// The value, after escapes, folding and chomping.
         value: Cow<'a, str>,
+        /// How it was written.
         style: ScalarStyle,
         /// Header indicators of a literal or folded scalar.
         block: Option<BlockHeader>,
     },
+    /// An alias (`*name`).
     Alias {
+        /// The anchor name (without `*`).
         name: Cow<'a, str>,
     },
 }

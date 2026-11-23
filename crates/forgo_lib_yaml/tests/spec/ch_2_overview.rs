@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/spec/ch_2_overview.rs
 //! YAML 1.2.2 Chapter 2: Language Overview
 //!
 //! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-2-language-overview

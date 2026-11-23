@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/yaml_spec_1_2_2.rs
 //! YAML 1.2.2 Specification Compliance Test Suite
 //!
 //! This test suite is organized to precisely follow the structure of the YAML 1.2.2 specification.

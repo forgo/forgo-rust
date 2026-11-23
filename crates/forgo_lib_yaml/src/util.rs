@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/src/util.rs
 //! Public helpers.
 
 use crate::emitter_helpers::{Ctx, plain_ok};

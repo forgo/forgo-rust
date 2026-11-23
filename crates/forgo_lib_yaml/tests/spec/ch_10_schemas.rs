@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/spec/ch_10_schemas.rs
 //! YAML 1.2.2 Chapter 10: Recommended Schemas
 //!
 //! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-10-recommended-schemas

@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/spec/ch_4_syntax.rs
 //! YAML 1.2.2 Chapter 4: Syntax Conventions
 //!
 //! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-4-syntax-conventions

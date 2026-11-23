@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/spec/ch_3_processes.rs
 //! YAML 1.2.2 Chapter 3: Processes and Models
 //!
 //! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-3-processes-and-models

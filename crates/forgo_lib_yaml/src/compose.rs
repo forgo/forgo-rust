@@ -193,8 +193,13 @@ fn syntax_err(m: Mark, msg: impl Into<String>) -> Error {
     }
 }
 
+/// Add a comment to a node's trailing comment. Several comments for one
+/// node are joined with ` # `; an empty one (a bare `#`) adds nothing
+/// then.
 fn append_comment(slot: &mut Option<String>, text: String) {
     *slot = Some(match slot.take() {
+        Some(t) if t.is_empty() => text,
+        Some(t) if text.is_empty() => t,
         Some(t) => format!("{t} # {text}"),
         None => text,
     });
@@ -226,9 +231,17 @@ impl<'a> Composer<'a> {
         }
     }
 
-    /// Comments a node takes when it starts.
+    /// Comments a node takes when it starts. An omitted value (`? key`
+    /// without `:`) sits at the next token, so it leaves the comments
+    /// before that to the node that follows.
     fn begin_node(&mut self, start: Mark, collection: bool, meta: &mut Meta) {
-        self.drain_until(start.index);
+        self.begin_node_at(start, collection, false, meta);
+    }
+
+    fn begin_node_at(&mut self, start: Mark, collection: bool, omitted: bool, meta: &mut Meta) {
+        if !omitted {
+            self.drain_until(start.index);
+        }
         match self.role() {
             Role::Key => {
                 let l = std::mem::take(&mut self.leading);
@@ -241,7 +254,7 @@ impl<'a> Composer<'a> {
                     meta.leading_comments = std::mem::take(&mut f.entry_leading);
                 }
                 // A nested collection leaves later comments to its first child.
-                if !collection {
+                if !collection && !omitted {
                     meta.leading_comments.append(&mut self.leading);
                 }
                 if let Some(c) = self.carry.take() {
@@ -308,6 +321,22 @@ impl<'a> Composer<'a> {
         {
             let text = c.text.trim().to_string();
             append_comment(&mut meta.trailing_comment, text);
+            self.ci += 1;
+        }
+    }
+
+    /// A comment after a block collection's properties, on their line
+    /// (`key: !!map # c`), belongs to the collection.
+    fn props_line_comment(&mut self, flow: bool, span: Span, meta: &mut Meta) {
+        if flow || (meta.anchor.is_none() && meta.tag.is_none()) {
+            return;
+        }
+        if let Some(c) = self.comments.get(self.ci)
+            && c.trailing
+            && c.start.line == span.start.line
+            && c.start.index > span.start.index
+        {
+            append_comment(&mut meta.trailing_comment, c.text.trim().to_string());
             self.ci += 1;
         }
     }
@@ -456,7 +485,15 @@ impl<'a> Composer<'a> {
                 block,
             } => {
                 let mut meta = Meta::default();
-                self.begin_node(span.start, false, &mut meta);
+                // A block mapping value without `:` is placed at the next
+                // token.
+                let omitted = span.start == span.end
+                    && anchor.is_none()
+                    && tag.is_none()
+                    && self.role() == Role::Value
+                    && self.stack.last().is_some_and(|f| !f.elem.meta.is_flow())
+                    && text_end(self.src, &SourceSpan::from_span(span)).is_none();
+                self.begin_node_at(span.start, false, omitted, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
                 meta.span = SourceSpan::from_span(span);
                 meta.style = Some(match style {
@@ -522,6 +559,7 @@ impl<'a> Composer<'a> {
                 self.props(anchor, tag.as_ref(), &mut meta);
                 meta.span = SourceSpan::from_span(span);
                 meta.style = Some(if flow { Style::Flow } else { Style::Block });
+                self.props_line_comment(flow, span, &mut meta);
                 self.stack.push(Frame {
                     elem: Elem {
                         node: Node::Seq(Vec::new()),
@@ -539,6 +577,7 @@ impl<'a> Composer<'a> {
                 self.props(anchor, tag.as_ref(), &mut meta);
                 meta.span = SourceSpan::from_span(span);
                 meta.style = Some(if flow { Style::Flow } else { Style::Block });
+                self.props_line_comment(flow, span, &mut meta);
                 self.stack.push(Frame {
                     elem: Elem {
                         node: Node::Map(Vec::new()),

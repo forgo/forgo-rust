@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/spec/ch_9_documents.rs
 //! YAML 1.2.2 Chapter 9: Document Stream Productions
 //!
 //! **Spec Reference:** https://yaml.org/spec/1.2.2/#chapter-9-document-stream-productions

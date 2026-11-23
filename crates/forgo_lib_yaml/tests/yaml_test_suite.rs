@@ -289,6 +289,9 @@ fn debug_without_spans(docs: &[forgo_lib_yaml::Doc]) -> Vec<String> {
             depth = depth.saturating_sub(line.matches(')').count());
             continue;
         }
+        if line.trim_start().starts_with("origin: Origin(") {
+            continue;
+        }
         if line.trim_start().starts_with("span: SourceSpan(") {
             depth = line
                 .matches('(')

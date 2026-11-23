@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/api/scalar_api.rs
 //! Tests for Scalar type guards and conversions
 //!
 //! Covers:

@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/api/node_guards.rs
 //! Tests for Node type guards and conversions
 //!
 //! Covers:
