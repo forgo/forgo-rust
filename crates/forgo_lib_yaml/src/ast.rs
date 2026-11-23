@@ -877,9 +877,17 @@ impl Doc {
         Ok(())
     }
 
-    fn emit_body(&self, out: &mut String) -> Result<(), Error> {
+    fn emit_body_with(&self, out: &mut String, header_written: bool) -> Result<(), Error> {
         if !self.no_content {
-            Emitter::emit_root(&self.root, out)?;
+            Emitter::emit_root(
+                &self.root,
+                !self.footer_comments.is_empty(),
+                header_written,
+                out,
+            )?;
+            if header_written && !out.ends_with('\n') {
+                out.push('\n');
+            }
         }
         for c in &self.footer_comments {
             out.push('#');
@@ -924,8 +932,23 @@ impl Doc {
             out.push_str("...\n");
         }
         self.emit_directives(out)?;
+        let header_written = false;
         if self.explicit_start || has_directives || needs_start {
             out.push_str("---");
+            // A block root's properties and trailing comment (or an empty
+            // root's trailing comment) go on the `---` line.
+            if !self.no_content
+                && let Some(h) = crate::emitter::root_header(&self.root)
+            {
+                out.push(' ');
+                out.push_str(&h);
+                out.push('\n');
+                self.emit_body_with(out, true)?;
+                if self.explicit_end {
+                    out.push_str("...\n");
+                }
+                return Ok(());
+            }
             // Keep a scalar or flow root on the `---` line, as written.
             let inline = !self.no_content
                 && self.root.meta.leading_comments.is_empty()
@@ -940,7 +963,7 @@ impl Doc {
                 out.push('\n');
             }
         }
-        self.emit_body(out)?;
+        self.emit_body_with(out, header_written)?;
         if self.explicit_end {
             out.push_str("...\n");
         }

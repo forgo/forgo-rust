@@ -560,7 +560,7 @@ impl<'a> Scanner<'a> {
             if is_break(c) {
                 break;
             }
-            if !is_nb_char(c) && c != '\u{FEFF}' {
+            if !is_nb_char(c) {
                 return Err(
                     self.err_here(format!("invalid character U+{:04X} in comment", c as u32))
                 );
@@ -1216,7 +1216,7 @@ impl<'a> Scanner<'a> {
                 if is_break(c) {
                     break;
                 }
-                if !is_nb_char(c) && c != '\u{FEFF}' {
+                if !is_nb_char(c) {
                     return Err(self.err_here(format!("invalid character U+{:04X}", c as u32)));
                 }
                 self.advance();

@@ -16,6 +16,7 @@ pub fn needs_quotes(s: &str) -> bool {
             key: false,
             block_ok: true,
             empty_ok: true,
+            line_start: true,
         },
     )
 }

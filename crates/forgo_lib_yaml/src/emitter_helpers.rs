@@ -31,6 +31,9 @@ pub(crate) struct Ctx {
     pub block_ok: bool,
     /// An empty (zero-length) plain scalar is allowed here.
     pub empty_ok: bool,
+    /// The scalar starts at column 0, where `--- ` and `... ` would be
+    /// read as document markers.
+    pub line_start: bool,
 }
 
 /// The chosen representation of a scalar.
@@ -66,8 +69,10 @@ fn resolves_non_string(s: &str) -> bool {
 
 /// Can `line` be one line of a plain scalar? For an implicit key, the
 /// text is followed by `: `, so a trailing `:` (or a lone `-`, `?`, `:`)
-/// still reads back.
-fn plain_line_ok(line: &str, first: bool, flow: bool, key: bool) -> bool {
+/// still reads back. At the start of a line, text beginning with a
+/// document marker isn't plain.
+fn plain_line_ok(line: &str, first: bool, ctx: Ctx) -> bool {
+    let (flow, key) = (ctx.flow, ctx.key);
     let b = line.as_bytes();
     if b.is_empty() {
         return false;
@@ -100,8 +105,9 @@ fn plain_line_ok(line: &str, first: bool, flow: bool, key: bool) -> bool {
         } else if crate::syntax::chars::is_indicator(c0) {
             return false;
         }
-        if (line.starts_with("---") || line.starts_with("..."))
-            && matches!(b.get(3), None | Some(b' ' | b'\t'))
+        if ctx.line_start
+            && (line.starts_with("---") || line.starts_with("..."))
+            && (matches!(b.get(3), Some(b' ' | b'\t')) || (b.get(3).is_none() && !key))
         {
             return false;
         }
@@ -133,7 +139,12 @@ pub(crate) fn plain_text_ok(s: &str, ctx: Ctx) -> bool {
             if seg.is_empty() {
                 continue; // a run of line breaks
             }
-            if !plain_line_ok(seg, first, ctx.flow, false) {
+            let seg_ctx = Ctx {
+                key: false,
+                line_start: ctx.line_start && first,
+                ..ctx
+            };
+            if !plain_line_ok(seg, first, seg_ctx) {
                 return false;
             }
             first = false;
@@ -143,12 +154,15 @@ pub(crate) fn plain_text_ok(s: &str, ctx: Ctx) -> bool {
     if ctx.key && s.chars().count() > 1024 {
         return false;
     }
-    plain_line_ok(s, true, ctx.flow, ctx.key)
+    plain_line_ok(s, true, ctx)
 }
 
 /// Can `s` be written single-quoted here?
 pub(crate) fn single_ok(s: &str, ctx: Ctx) -> bool {
-    if s.chars().any(|c| c != '\n' && c != '\t' && awkward(c)) {
+    // A BOM is allowed inside quotes (`nb-json`); it was written that way.
+    if s.chars()
+        .any(|c| c != '\n' && c != '\t' && c != '\u{FEFF}' && awkward(c))
+    {
         return false;
     }
     if s.contains('\n') {
@@ -210,7 +224,8 @@ pub(crate) fn scalar_repr(scalar: &Scalar, meta: &Meta, ctx: Ctx) -> Repr {
                 // A tag fixes the type, so text like `23` can stay plain.
                 if plain_ok(s, ctx) || (tagged && plain_text_ok(s, ctx)) {
                     Repr::Plain(s.clone())
-                } else if s.is_empty() && tagged && ctx.empty_ok {
+                } else if s.is_empty() && tagged {
+                    // A tag on an empty node: `!!str` alone.
                     Repr::Empty
                 } else {
                     Repr::Double
@@ -248,7 +263,8 @@ pub(crate) fn scalar_repr(scalar: &Scalar, meta: &Meta, ctx: Ctx) -> Repr {
                 && spelling_ok(sp, other)
             {
                 if sp.is_empty() {
-                    if ctx.empty_ok || tagged {
+                    // Properties can stand alone on an empty node anywhere.
+                    if ctx.empty_ok || tagged || meta.anchor.is_some() {
                         return Repr::Empty;
                     }
                 } else {
@@ -473,12 +489,14 @@ mod tests {
         key: false,
         block_ok: true,
         empty_ok: true,
+        line_start: true,
     };
     const FLOW: Ctx = Ctx {
         flow: true,
         key: false,
         block_ok: false,
         empty_ok: false,
+        line_start: false,
     };
 
     #[test]

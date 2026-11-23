@@ -1,13 +1,32 @@
 //! Robustness: every input derived from the official suite by truncation or
 //! a single-character mutation must produce `Ok` or `Err` (never a panic
-//! or a hang), and whenever the scanner accepts it, every byte must be
-//! covered by a token, a comment or white space.
+//! or a hang), and the event parser and the composer must agree on it.
+//! Whenever it parses:
+//! - every byte is covered by a token, a comment or white space;
+//! - emitting its documents gives YAML that parses back to the same
+//!   content (normalized events).
+//!
+//! Presentation (re-parsed documents equal, comments and styles included)
+//! is exact on the suite, the spec-gap corpus and the fixtures; on these
+//! mutated inputs a few comments in unusual positions (between `?` and a
+//! key, inside flow pairs) move, so it is a ratchet: the count of such
+//! inputs may only go down.
 //!
 //! Skips quietly when the suite data is missing (see yaml_test_suite.rs).
+
+#[path = "yaml_test_suite/normalize.rs"]
+mod normalize;
 
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
+
+/// Upper bound for mutated inputs whose re-parsed documents differ in
+/// presentation (ratchet: lower it when fixes land, never raise it).
+const MAX_PRESENTATION_DIFFS: usize = 61;
+/// Report presentation differences as problems (for investigating them).
+const SHOW_PRESENTATION: bool = false;
+static PRESENTATION_DIFFS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 const MUTATIONS: &[&str] = &[
     ":", "-", "?", "[", "]", "{", "}", ",", "#", "'", "\"", "|", ">", "&", "*", "!", "%", "@",
@@ -52,12 +71,76 @@ fn check(input: &str) -> Option<String> {
             break;
         }
     }
-    if ok {
-        match forgo_lib_yaml::syntax::uncovered_content(input) {
-            Ok(gaps) if gaps.is_empty() => {}
-            Ok(gaps) => return Some(format!("uncovered content {gaps:?}")),
-            Err(e) => return Some(format!("events accepted but scanner failed: {e}")),
+    if !ok {
+        // The composer must agree that the input is invalid.
+        return forgo_lib_yaml::Doc::from_stream(input)
+            .ok()
+            .map(|_| "events rejected the input but the composer accepted it".to_string());
+    }
+    match forgo_lib_yaml::syntax::uncovered_content(input) {
+        Ok(gaps) if gaps.is_empty() => {}
+        Ok(gaps) => return Some(format!("uncovered content {gaps:?}")),
+        Err(e) => return Some(format!("events accepted but scanner failed: {e}")),
+    }
+    let docs = match forgo_lib_yaml::Doc::from_stream(input) {
+        Ok(d) => d,
+        // An alias to an undefined anchor is a composition error only.
+        Err(e) if e.to_string().contains("alias") => return None,
+        Err(e) => return Some(format!("events accepted but composing failed: {e}")),
+    };
+    let emitted = match forgo_lib_yaml::Doc::to_stream_string(&docs) {
+        Ok(s) => s,
+        Err(e) => return Some(format!("emit failed: {e}")),
+    };
+    let again = match forgo_lib_yaml::Doc::from_stream(&emitted) {
+        Ok(d) => d,
+        Err(e) => return Some(format!("emitted output doesn't parse ({e}): {emitted:?}")),
+    };
+    if normalize::normalized_events(input) != normalize::normalized_events(&emitted) {
+        return Some(format!("round trip changed content; emitted {emitted:?}"));
+    }
+    if again != docs {
+        PRESENTATION_DIFFS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if !SHOW_PRESENTATION {
+            return None;
         }
+        let strip = |d: &[forgo_lib_yaml::Doc]| -> Vec<String> {
+            let text = format!("{d:#?}");
+            let mut out = Vec::new();
+            let mut depth = 0usize;
+            for line in text.lines() {
+                if depth > 0 {
+                    depth += line.matches('(').count();
+                    depth = depth.saturating_sub(line.matches(')').count());
+                    continue;
+                }
+                if line.trim_start().starts_with("span: SourceSpan(") {
+                    depth = line
+                        .matches('(')
+                        .count()
+                        .saturating_sub(line.matches(')').count());
+                    continue;
+                }
+                out.push(line.trim().to_string());
+            }
+            out
+        };
+        let (a, b) = (strip(&docs), strip(&again));
+        let i = a
+            .iter()
+            .zip(&b)
+            .position(|(x, y)| x != y)
+            .unwrap_or(a.len().min(b.len()));
+        let ctx = |v: &[String]| {
+            v.get(i.saturating_sub(2)..(i + 1).min(v.len()))
+                .map(|s| s.join(" "))
+                .unwrap_or_default()
+        };
+        return Some(format!(
+            "re-parsed documents differ: [{}] vs [{}]; emitted {emitted:?}",
+            ctx(&a),
+            ctx(&b)
+        ));
     }
     None
 }
@@ -131,7 +214,7 @@ fn mutated_suite_inputs_never_panic() {
                             Ok(Some(p)) => found.push(format!("{p} on {v:?}")),
                             Err(_) => found.push(format!("panic on {v:?}")),
                         }
-                        if found.len() > 3 {
+                        if found.len() > 50 {
                             break;
                         }
                     }
@@ -160,7 +243,12 @@ fn mutated_suite_inputs_never_panic() {
             }
         }
     }
-    println!("robustness: {total} variants checked");
+    let diffs = PRESENTATION_DIFFS.load(std::sync::atomic::Ordering::Relaxed);
+    println!("robustness: {total} variants checked; {diffs} with presentation differences");
+    assert!(
+        diffs <= MAX_PRESENTATION_DIFFS,
+        "presentation differences went up: {diffs} > {MAX_PRESENTATION_DIFFS}"
+    );
     assert!(
         problems.is_empty(),
         "{} problems:\n{}",

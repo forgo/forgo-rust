@@ -21,6 +21,8 @@ const ROOT: Ctx = Ctx {
     key: false,
     block_ok: true,
     empty_ok: true,
+    // Root plain text that looks like a marker is written indented instead.
+    line_start: false,
 };
 const BLOCK_VALUE: Ctx = ROOT;
 const BLOCK_KEY: Ctx = Ctx {
@@ -28,24 +30,28 @@ const BLOCK_KEY: Ctx = Ctx {
     key: true,
     block_ok: false,
     empty_ok: true,
+    line_start: false,
 };
 const FLOW_ITEM: Ctx = Ctx {
     flow: true,
     key: false,
     block_ok: false,
     empty_ok: false,
+    line_start: false,
 };
 const FLOW_VALUE: Ctx = Ctx {
     flow: true,
     key: false,
     block_ok: false,
     empty_ok: true,
+    line_start: false,
 };
 const FLOW_KEY: Ctx = Ctx {
     flow: true,
     key: true,
     block_ok: false,
     empty_ok: true,
+    line_start: false,
 };
 
 fn comment_lines(comments: &[String], indent: usize, out: &mut String) {
@@ -114,8 +120,13 @@ fn write_scalar(
     out: &mut String,
 ) -> Repr {
     let repr = scalar_repr(sc, &e.meta, ctx);
+    write_repr(&repr, sc, e, indent, parent, out);
+    repr
+}
+
+fn write_repr(repr: &Repr, sc: &Scalar, e: &Elem, indent: usize, parent: usize, out: &mut String) {
     let text = scalar_text(sc);
-    match &repr {
+    match repr {
         Repr::Plain(t) => write_folded_lines(t, indent, out),
         Repr::Empty => {}
         Repr::Single => emit_single(&text, indent, out),
@@ -129,7 +140,42 @@ fn write_scalar(
             out,
         ),
     }
-    repr
+}
+
+/// Does `s` start with a document marker (`---`/`...` + space or end)?
+fn starts_with_marker(s: &str) -> bool {
+    (s.starts_with("---") || s.starts_with("..."))
+        && matches!(s.as_bytes().get(3), None | Some(b' ' | b'\t' | b'\n'))
+}
+
+fn no_content_line(s: &str) -> bool {
+    s.split('\n').all(str::is_empty)
+}
+
+/// The text a document root puts on the `---` line, if any: a block
+/// collection's properties and trailing comment, or an empty scalar's
+/// trailing comment (so that it reads back as trailing `---`).
+pub fn root_header(elem: &Elem) -> Option<String> {
+    let mut s = String::new();
+    match &elem.node {
+        Node::Map(_) | Node::Seq(_) if !is_flow(elem) => {
+            s.push_str(props_string(elem).trim_end());
+        }
+        Node::Scalar(sc)
+            if elem.meta.tag.is_none()
+                && elem.meta.anchor.is_none()
+                && !elem.meta.leading_comments.is_empty()
+                && scalar_repr(sc, &elem.meta, ROOT) == Repr::Empty => {}
+        _ => return None,
+    }
+    if let Some(tc) = &elem.meta.trailing_comment {
+        if !s.is_empty() {
+            s.push(' ');
+        }
+        s.push_str("# ");
+        s.push_str(tc);
+    }
+    (!s.is_empty()).then_some(s)
 }
 
 fn trim_trailing_spaces(out: &mut String) {
@@ -140,13 +186,19 @@ fn trim_trailing_spaces(out: &mut String) {
 
 impl Emitter {
     /// Emit a document root, including its leading comments and properties.
-    pub fn emit_root(elem: &Elem, out: &mut String) -> Result<(), Error> {
+    /// `followed_by_comments`: footer comments come next.
+    pub fn emit_root(
+        elem: &Elem,
+        followed_by_comments: bool,
+        header_written: bool,
+        out: &mut String,
+    ) -> Result<(), Error> {
         comment_lines(&elem.meta.leading_comments, 0, out);
         match &elem.node {
             Node::Map(_) | Node::Seq(_) if !is_flow(elem) => {
                 let props = props_string(elem);
                 let props = props.trim_end();
-                if !props.is_empty() || elem.meta.trailing_comment.is_some() {
+                if !header_written && (!props.is_empty() || elem.meta.trailing_comment.is_some()) {
                     out.push_str(props);
                     if let Some(tc) = &elem.meta.trailing_comment {
                         if !props.is_empty() {
@@ -167,14 +219,35 @@ impl Emitter {
                 Ok(())
             }
             Node::Scalar(sc) => {
-                out.push_str(&props_string(elem));
-                let repr = write_scalar(sc, elem, ROOT, 2, 0, out);
+                let props = props_string(elem);
+                let mut repr = scalar_repr(sc, &elem.meta, ROOT);
+                if let Repr::Plain(t) = &repr
+                    && props.is_empty()
+                    && starts_with_marker(t)
+                {
+                    // At column 0 this would read as a document marker.
+                    out.push(' ');
+                }
+                out.push_str(&props);
+                // An empty root block scalar would read the comments after
+                // it as content without an indentation indicator.
+                if let Repr::Block { header, .. } = &mut repr
+                    && followed_by_comments
+                    && no_content_line(&scalar_text(sc))
+                {
+                    header.indent.get_or_insert(2);
+                }
+                write_repr(&repr, sc, elem, 2, 0, out);
                 if !matches!(repr, Repr::Block { .. }) {
                     if repr == Repr::Empty {
                         trim_trailing_spaces(out);
                     }
-                    trailing(elem, out);
-                    out.push('\n');
+                    if !header_written {
+                        trailing(elem, out);
+                    }
+                    if !(header_written && repr == Repr::Empty) {
+                        out.push('\n');
+                    }
                 }
                 Ok(())
             }
@@ -212,9 +285,20 @@ impl Emitter {
     fn emit_entry(k: &MapKey, v: &Elem, indent: usize, out: &mut String) -> Result<(), Error> {
         comment_lines(&v.meta.leading_comments, indent, out);
         emit_indent(indent, out);
+        let key_ctx = Ctx {
+            line_start: indent == 0,
+            ..BLOCK_KEY
+        };
         match k {
-            MapKey::Str(s) if plain_ok(s, BLOCK_KEY) => out.push_str(s),
+            MapKey::Str(s) if plain_ok(s, key_ctx) => out.push_str(s),
             MapKey::Str(s) if !s.contains('\n') && s.chars().count() <= 1000 => emit_quoted(s, out),
+            // A multi-line plain key: `? a`, an empty line, `b`.
+            MapKey::Str(s) if plain_ok(s, BLOCK_VALUE) => {
+                out.push_str("? ");
+                write_folded_lines(s, indent + 2, out);
+                out.push('\n');
+                emit_indent(indent, out);
+            }
             MapKey::Str(s) => {
                 out.push_str("? ");
                 emit_quoted(s, out);
@@ -222,7 +306,7 @@ impl Emitter {
                 emit_indent(indent, out);
             }
             MapKey::Complex(ke) => {
-                if !Self::write_inline_key(ke, out) {
+                if !Self::write_inline_key(ke, key_ctx, out) {
                     out.push('?');
                     Self::emit_value_after_indicator(ke, indent, out)?;
                     emit_indent(indent, out);
@@ -234,20 +318,27 @@ impl Emitter {
     }
 
     /// Write a complex key as an implicit key if it can be one.
-    fn write_inline_key(ke: &Elem, out: &mut String) -> bool {
+    fn write_inline_key(ke: &Elem, key_ctx: Ctx, out: &mut String) -> bool {
         let short = |s: &str| !s.contains('\n') && s.chars().count() <= 1000;
         if !ke.meta.leading_comments.is_empty() || ke.meta.trailing_comment.is_some() {
             return false;
         }
-        // A key written as a block scalar keeps that form: `? |`.
+        // A key written as a block scalar keeps that form (`? |`), and so
+        // does a multi-line plain or single-quoted key (`? a` ...).
         if matches!(ke.meta.style, Some(Style::Literal(_) | Style::Folded(_))) {
+            return false;
+        }
+        if let Node::Scalar(Scalar::Str(s)) = &ke.node
+            && s.contains('\n')
+            && ke.meta.style != Some(Style::DoubleQuoted)
+        {
             return false;
         }
         match &ke.node {
             Node::Scalar(sc) => {
                 let props = props_string(ke);
                 let mut tmp = props.clone();
-                match write_scalar(sc, ke, BLOCK_KEY, 0, 0, &mut tmp) {
+                match write_scalar(sc, ke, key_ctx, 0, 0, &mut tmp) {
                     Repr::Block { .. } => false,
                     Repr::Empty => {
                         // `: value`, or `!tag : value` / `&a : value`.
@@ -334,25 +425,31 @@ impl Emitter {
     /// Emit a node inside a flow collection (no line break at the end).
     /// `indent` is the column for continuation lines.
     fn emit_flow_node(e: &Elem, ctx: Ctx, indent: usize, out: &mut String) {
-        write_props(&e.meta, out);
+        let mut node = String::new();
+        write_props(&e.meta, &mut node);
         match &e.node {
             Node::Scalar(sc) => {
-                if write_scalar(sc, e, ctx, indent, indent, out) == Repr::Empty {
-                    trim_trailing_spaces(out);
+                if write_scalar(sc, e, ctx, indent, indent, &mut node) == Repr::Empty {
+                    trim_trailing_spaces(&mut node);
                 }
             }
             Node::Alias(name) => {
-                out.push('*');
-                out.push_str(name);
+                node.push('*');
+                node.push_str(name);
             }
-            Node::Seq(_) | Node::Map(_) => Self::emit_flow(e, indent + 2, out),
+            Node::Seq(_) | Node::Map(_) => Self::emit_flow(e, indent + 2, &mut node),
         }
+        out.push_str(&node);
     }
 
     /// Emit a flow mapping key (without the `:`).
     fn emit_flow_key(k: &MapKey, indent: usize, out: &mut String) {
         match k {
             MapKey::Str(s) if plain_ok(s, FLOW_KEY) => out.push_str(s),
+            // Keys inside flow mappings may span lines.
+            MapKey::Str(s) if s.contains('\n') && plain_ok(s, FLOW_VALUE) => {
+                write_folded_lines(s, indent, out)
+            }
             MapKey::Str(s) => emit_quoted(s, out),
             MapKey::Complex(ke) => {
                 let before = out.len();

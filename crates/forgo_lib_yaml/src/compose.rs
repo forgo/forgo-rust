@@ -207,7 +207,9 @@ impl<'a> Composer<'a> {
             return;
         }
         let ok = match within {
-            Some(limit) => c.start.index < limit,
+            // A block scalar's header comment: inside its span, or on its
+            // first line when the scalar has no content.
+            Some(limit) => c.start.index < limit || c.start.line == end.line,
             None => c.start.line == end.line && c.start.index >= end.index,
         };
         if ok {
