@@ -280,7 +280,11 @@ impl<'a> Scanner<'a> {
         if self.mark.col != 0 {
             return false;
         }
-        let rest = &self.bytes[self.mark.index..];
+        let mut rest = &self.bytes[self.mark.index..];
+        // A document prefix may start with a byte order mark.
+        if rest.starts_with("\u{FEFF}".as_bytes()) {
+            rest = &rest[3..];
+        }
         (rest.starts_with(b"---") || rest.starts_with(b"..."))
             && matches!(rest.get(3), None | Some(b' ' | b'\t' | b'\n' | b'\r'))
     }
