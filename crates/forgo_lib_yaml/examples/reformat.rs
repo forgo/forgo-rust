@@ -1,4 +1,6 @@
-//! Parse a YAML stream and print it as forgo_lib_yaml emits it.
+//! Parse a YAML stream and print it in the emitter's layout (two-space
+//! indentation, compact `- key: value` items), keeping comments and
+//! styles. Without `reformat()`, writing would give back the input.
 //!
 //! ```sh
 //! cargo run -p forgo_lib_yaml --example reformat -- path/to/file.yaml
@@ -22,9 +24,13 @@ fn main() {
             s
         }
     };
-    match forgo_lib_yaml::Doc::from_stream(&text)
-        .and_then(|d| forgo_lib_yaml::Doc::to_stream_string(&d))
-    {
+    let written = forgo_lib_yaml::Doc::from_stream(&text).and_then(|mut docs| {
+        for d in &mut docs {
+            d.reformat();
+        }
+        forgo_lib_yaml::Doc::to_stream_string(&docs)
+    });
+    match written {
         Ok(out) => print!("{out}"),
         Err(e) => {
             eprintln!("{e}");
