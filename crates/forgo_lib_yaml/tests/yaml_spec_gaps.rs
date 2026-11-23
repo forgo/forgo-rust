@@ -209,21 +209,30 @@ fn spec_gaps() {
         Expect::Error,
     ));
 
-    // --- Top-level block scalars (n = -1): the indentation indicator counts
-    // from -1, so `|1` means column 0 and `|2` column 1 (libyaml differs).
+    // --- Top-level block scalars: content may start at column 0, and an
+    // explicit indentation indicator counts from column 0 (as in libyaml,
+    // yaml-rust2 and saphyr; the grammar read literally would give one less).
     let mut text = |name: &str, input: &str, expect: Expect| {
         cases.push((name.to_string(), input.as_bytes().to_vec(), expect));
     };
     text(
         "top-level-indicator-1",
         "--- |1\n  foo\n",
-        Expect::Events("+STR\n+DOC ---\n=VAL |  foo\\n\n-DOC\n-STR"),
+        Expect::Events("+STR\n+DOC ---\n=VAL | foo\\n\n-DOC\n-STR"),
     );
     text(
         "top-level-indicator-2",
         "--- |2\n  foo\n",
-        Expect::Events("+STR\n+DOC ---\n=VAL | foo\\n\n-DOC\n-STR"),
+        Expect::Events("+STR\n+DOC ---\n=VAL |foo\\n\n-DOC\n-STR"),
     );
+    // A line that only closes a flow collection may sit at column 0 under a
+    // block key (as in yaml-rust2 and saphyr); content may not.
+    text(
+        "flow-closing-bracket-at-column-0",
+        "key: [\n  a\n]\n",
+        Expect::Events("+STR\n+DOC\n+MAP\n=VAL :key\n+SEQ []\n=VAL :a\n-SEQ\n-MAP\n-DOC\n-STR"),
+    );
+    text("flow-content-at-column-0", "key: [a,\nb]\n", Expect::Error);
     text(
         "top-level-auto-detect-column-0",
         "--- >\nfoo\nbar\n",

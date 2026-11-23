@@ -62,7 +62,7 @@ impl Check {
 
 /// Checks that gate this test. The JSON check joins once the composer
 /// replaces the legacy parser (Phase 2).
-const GATED: &[Check] = &[Check::Error, Check::Events, Check::Coverage];
+const GATED: &[Check] = &[Check::Error, Check::Events, Check::Json, Check::Coverage];
 
 /// What is under test, for the report header.
 const SUBJECT: &str = "event core (`forgo_lib_yaml::events`) for error/events/coverage; legacy `Doc::from_stream` for json";

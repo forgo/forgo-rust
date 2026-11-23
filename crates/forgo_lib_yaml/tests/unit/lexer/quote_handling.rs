@@ -7,47 +7,34 @@
 //! - §7.3: Flow Scalar Styles
 //!
 //! **Purpose:**
-//! These are unit tests for quote character validation in the lexer. They test implementation-specific
+//! These are unit tests for quote character validation in the scanner. They test implementation-specific
 //! behavior and edge cases not explicitly covered by the spec. Unlike spec
 //! tests which validate compliance, these tests validate internal correctness
 //! and error handling.
 
-use forgo_lib_yaml::{Lexer, Tok};
+/// The event stream for `input` ends in a syntax error.
+fn events_fail(input: &str) -> bool {
+    forgo_lib_yaml::events(input).any(|r| r.is_err())
+}
 
 #[test]
 fn test_unterminated_double_quote_lexer() {
     let input = r#"key: "unterminated"#;
-    let mut lx = Lexer::new(input);
-    let mut found_error = false;
-    loop {
-        let tok = lx.next_token();
-        if matches!(tok, Tok::Error(_)) {
-            found_error = true;
-            break;
-        }
-        if matches!(tok, Tok::Eof) {
-            break;
-        }
-    }
-    assert!(found_error, "Should have found Tok::Error for unterminated double quote");
+    assert!(
+        events_fail(input),
+        "unterminated double quote must be a syntax error"
+    );
+    assert!(forgo_lib_yaml::Doc::from_str(input).is_err());
 }
 
 #[test]
 fn test_unterminated_single_quote_lexer() {
     let input = r#"key: 'unterminated"#;
-    let mut lx = Lexer::new(input);
-    let mut found_error = false;
-    loop {
-        let tok = lx.next_token();
-        if matches!(tok, Tok::Error(_)) {
-            found_error = true;
-            break;
-        }
-        if matches!(tok, Tok::Eof) {
-            break;
-        }
-    }
-    assert!(found_error, "Should have found Tok::Error for unterminated single quote");
+    assert!(
+        events_fail(input),
+        "unterminated single quote must be a syntax error"
+    );
+    assert!(forgo_lib_yaml::Doc::from_str(input).is_err());
 }
 
 #[test]

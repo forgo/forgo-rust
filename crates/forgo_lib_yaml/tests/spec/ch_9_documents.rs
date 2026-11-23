@@ -72,13 +72,7 @@ fn ch_9_1_2_03_both_markers() {
 
 #[test]
 fn ch_9_1_2_04_marker_only() {
-    Fixture::new(
-        "9.1.2",
-        4,
-        "Document with only marker",
-        "---\n",
-    )
-    .run();
+    Fixture::new("9.1.2", 4, "Document with only marker", "---\n").run();
 }
 
 #[test]
@@ -97,35 +91,17 @@ fn ch_9_1_2_05_consecutive_end_markers() {
 // 9.1.3 Bare Documents
 #[test]
 fn ch_9_1_3_01_bare_document() {
-    Fixture::new(
-        "9.1.3",
-        1,
-        "Bare document (no markers)",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("9.1.3", 1, "Bare document (no markers)", "key: value\n").run();
 }
 
 #[test]
 fn ch_9_1_3_02_bare_scalar() {
-    Fixture::new(
-        "9.1.3",
-        2,
-        "Bare scalar document",
-        "just a string\n",
-    )
-    .run();
+    Fixture::new("9.1.3", 2, "Bare scalar document", "just a string\n").run();
 }
 
 #[test]
 fn ch_9_1_3_03_bare_sequence() {
-    Fixture::new(
-        "9.1.3",
-        3,
-        "Bare sequence document",
-        "- item1\n- item2\n",
-    )
-    .run();
+    Fixture::new("9.1.3", 3, "Bare sequence document", "- item1\n- item2\n").run();
 }
 
 // 9.1.4 Explicit Documents
@@ -452,7 +428,7 @@ fn ch_9_5_07_utf16_le_with_bom() {
     let mut bytes = Vec::new();
     for word in utf16_le {
         bytes.push((word & 0xFF) as u8); // low byte
-        bytes.push((word >> 8) as u8);   // high byte
+        bytes.push((word >> 8) as u8); // high byte
     }
 
     // Try to parse UTF-16 LE
@@ -483,7 +459,7 @@ fn ch_9_5_08_utf16_be_with_bom() {
     // Convert to bytes (big-endian)
     let mut bytes = Vec::new();
     for word in utf16_be {
-        bytes.push((word >> 8) as u8);   // high byte
+        bytes.push((word >> 8) as u8); // high byte
         bytes.push((word & 0xFF) as u8); // low byte
     }
 
@@ -514,10 +490,10 @@ fn ch_9_5_09_utf32_le_with_bom() {
     // Convert to bytes (little-endian)
     let mut bytes = Vec::new();
     for dword in utf32_le {
-        bytes.push((dword & 0xFF) as u8);         // byte 0
-        bytes.push(((dword >> 8) & 0xFF) as u8);  // byte 1
+        bytes.push((dword & 0xFF) as u8); // byte 0
+        bytes.push(((dword >> 8) & 0xFF) as u8); // byte 1
         bytes.push(((dword >> 16) & 0xFF) as u8); // byte 2
-        bytes.push((dword >> 24) as u8);          // byte 3
+        bytes.push((dword >> 24) as u8); // byte 3
     }
 
     // Try to parse UTF-32 LE
@@ -547,10 +523,10 @@ fn ch_9_5_10_utf32_be_with_bom() {
     // Convert to bytes (big-endian)
     let mut bytes = Vec::new();
     for dword in utf32_be {
-        bytes.push((dword >> 24) as u8);          // byte 3
+        bytes.push((dword >> 24) as u8); // byte 3
         bytes.push(((dword >> 16) & 0xFF) as u8); // byte 2
-        bytes.push(((dword >> 8) & 0xFF) as u8);  // byte 1
-        bytes.push((dword & 0xFF) as u8);         // byte 0
+        bytes.push(((dword >> 8) & 0xFF) as u8); // byte 1
+        bytes.push((dword & 0xFF) as u8); // byte 0
     }
 
     // Try to parse UTF-32 BE
@@ -610,19 +586,18 @@ fn ch_9_6_04_indented_document_end() {
 #[test]
 fn ch_9_6_05_document_marker_incomplete() {
     // Only two dashes should not be a marker
-    let input = "--\nkey: value\n";
-    let result = Doc::from_str(input);
-    // Should parse as scalar starting with "--"
-    assert!(result.is_ok());
+    let result = Doc::from_str("--\n");
+    // Should parse as the scalar "--"
+    assert_eq!(result.unwrap().root().node().as_str(), Some("--"));
+    assert!(Doc::from_str("key: --\n").is_ok());
 }
 
 #[test]
 fn ch_9_6_06_document_marker_with_prefix() {
     // Marker must start at column 0
-    let input = "x---\nkey: value\n";
-    let result = Doc::from_str(input);
-    // Should parse as scalar "x---"
-    assert!(result.is_ok());
+    let result = Doc::from_str("x---\n");
+    // Should parse as the scalar "x---"
+    assert_eq!(result.unwrap().root().node().as_str(), Some("x---"));
 }
 
 // ============================================================================

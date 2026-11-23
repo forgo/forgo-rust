@@ -126,8 +126,12 @@ fn ch_3_1_2_04_presentation_details_discarded() {
     let doc2 = Doc::from_str(input2).unwrap();
 
     // Both should produce same logical structure
-    let Node::Map(m1) = doc1.root().node() else { panic!() };
-    let Node::Map(m2) = doc2.root().node() else { panic!() };
+    let Node::Map(m1) = doc1.root().node() else {
+        panic!()
+    };
+    let Node::Map(m2) = doc2.root().node() else {
+        panic!()
+    };
 
     assert_eq!(m1.len(), m2.len());
 }
@@ -234,8 +238,9 @@ fn ch_3_3_01_well_formed_requirement() {
 
 #[test]
 fn ch_3_3_02_ill_formed_rejected() {
-    // Ill-formed input should be rejected
-    let invalid = "key: value\n  - invalid indentation\n";
+    // Ill-formed input should be rejected. (`key: value\n  - x` is NOT
+    // ill-formed: the indented line continues the plain scalar.)
+    let invalid = "key: [unclosed, flow\n";
     let result = Doc::from_str(invalid);
 
     // Should fail to parse
@@ -410,15 +415,20 @@ fn ch_3_5_04_types_preserved() {
 #[test]
 fn ch_3_6_01_whitespace_irrelevant() {
     // Presentation whitespace should not affect content
-    let compact = "key:value\n";
+    // (`key:value` would be one plain scalar: `:` must be followed by space.)
+    let compact = "key: value\n";
     let spaced = "key:    value   \n";
 
     let doc1 = Doc::from_str(compact).unwrap();
     let doc2 = Doc::from_str(spaced).unwrap();
 
     // Both should produce same structure
-    let Node::Map(m1) = doc1.root().node() else { panic!() };
-    let Node::Map(m2) = doc2.root().node() else { panic!() };
+    let Node::Map(m1) = doc1.root().node() else {
+        panic!()
+    };
+    let Node::Map(m2) = doc2.root().node() else {
+        panic!()
+    };
 
     assert_eq!(m1.len(), m2.len());
 }
@@ -433,8 +443,12 @@ fn ch_3_6_02_comments_ignored() {
     let doc2 = Doc::from_str(without).unwrap();
 
     // Both should produce same content
-    let Node::Map(m1) = doc1.root().node() else { panic!() };
-    let Node::Map(m2) = doc2.root().node() else { panic!() };
+    let Node::Map(m1) = doc1.root().node() else {
+        panic!()
+    };
+    let Node::Map(m2) = doc2.root().node() else {
+        panic!()
+    };
 
     assert_eq!(m1.len(), m2.len());
 }
@@ -451,9 +465,15 @@ fn ch_3_6_03_style_irrelevant() {
     let doc3 = Doc::from_str(single).unwrap();
 
     // All should produce same content
-    let Node::Map(m1) = doc1.root().node() else { panic!() };
-    let Node::Map(m2) = doc2.root().node() else { panic!() };
-    let Node::Map(m3) = doc3.root().node() else { panic!() };
+    let Node::Map(m1) = doc1.root().node() else {
+        panic!()
+    };
+    let Node::Map(m2) = doc2.root().node() else {
+        panic!()
+    };
+    let Node::Map(m3) = doc3.root().node() else {
+        panic!()
+    };
 
     assert_eq!(m1.len(), m2.len());
     assert_eq!(m1.len(), m3.len());
@@ -469,8 +489,12 @@ fn ch_3_6_04_collection_style_irrelevant() {
     let doc2 = Doc::from_str(flow).unwrap();
 
     // Both should produce same structure
-    let Node::Map(m1) = doc1.root().node() else { panic!() };
-    let Node::Map(m2) = doc2.root().node() else { panic!() };
+    let Node::Map(m1) = doc1.root().node() else {
+        panic!()
+    };
+    let Node::Map(m2) = doc2.root().node() else {
+        panic!()
+    };
 
     assert_eq!(m1.len(), m2.len());
 }
@@ -504,7 +528,10 @@ fn ch_3_2_2_02_anchor_scope_does_not_cross_documents() {
     // The alias *ref in second document refers to undefined anchor
     // This should fail during stream parsing (multi-document)
     let result = Doc::from_stream(input);
-    assert!(result.is_err(), "Anchor scope should not cross document boundaries");
+    assert!(
+        result.is_err(),
+        "Anchor scope should not cross document boundaries"
+    );
 }
 
 #[test]
@@ -600,7 +627,8 @@ fn ch_3_2_3_03_yaml_directive_unsupported_version() {
 #[test]
 fn ch_3_2_3_04_tag_directive_scope() {
     // TAG directive applies only to the document where it's defined
-    let input = "%TAG !e! tag:example.com,2000:app/\n---\nfirst: !e!type data\n---\nsecond: value\n";
+    let input =
+        "%TAG !e! tag:example.com,2000:app/\n---\nfirst: !e!type data\n---\nsecond: value\n";
 
     // First document can use !e! handle
     // Second document should not have access to !e! (unless redefined)
@@ -616,7 +644,10 @@ fn ch_3_2_3_05_duplicate_yaml_directive() {
     let result = Doc::from_str(input);
 
     // Should error - duplicate directive
-    assert!(result.is_err(), "Duplicate YAML directive should be rejected");
+    assert!(
+        result.is_err(),
+        "Duplicate YAML directive should be rejected"
+    );
 }
 
 #[test]
@@ -636,7 +667,10 @@ fn ch_3_2_3_07_directive_after_content() {
     let result = Doc::from_str(input);
 
     // Should error - directive after content
-    assert!(result.is_err(), "Directive after content should be rejected");
+    assert!(
+        result.is_err(),
+        "Directive after content should be rejected"
+    );
 }
 
 // ============================================================================
@@ -650,7 +684,10 @@ fn ch_3_3_07_tabs_in_block_indentation() {
     let result = Doc::from_str(input);
 
     // Should error - tabs forbidden in indentation
-    assert!(result.is_err(), "Tabs in block indentation should be rejected");
+    assert!(
+        result.is_err(),
+        "Tabs in block indentation should be rejected"
+    );
 }
 
 #[test]
@@ -802,13 +839,7 @@ fn ch_3_7_1_02_multiple_anchors_on_identical_content() {
 #[test]
 fn ch_3_7_1_03_alias_to_empty_scalar() {
     // Alias referencing empty/null scalar
-    Fixture::new(
-        "3.7.1",
-        3,
-        "Alias to empty scalar",
-        "empty: &e\nref: *e\n",
-    )
-    .run();
+    Fixture::new("3.7.1", 3, "Alias to empty scalar", "empty: &e\nref: *e\n").run();
 }
 
 #[test]
@@ -856,9 +887,19 @@ fn ch_3_7_2_02_duplicate_keys_canonical_comparison() {
         panic!("Expected map");
     };
 
-    // These should be treated as duplicate keys (same canonical form)
-    // Most implementations merge duplicates (last wins)
-    assert_eq!(m.len(), 1);
+    // Both entries are kept; lookups use the last, and the opt-in
+    // uniqueness check reports them as duplicates (same canonical form).
+    assert_eq!(m.len(), 2);
+    assert_eq!(
+        m.iter()
+            .rfind(|(k, _)| k == "key")
+            .unwrap()
+            .1
+            .node()
+            .as_str(),
+        Some("value2")
+    );
+    assert!(doc.check_unique_keys().is_err());
 }
 
 #[test]
@@ -921,7 +962,8 @@ fn ch_3_7_3_03_tag_resolution_no_sibling_influence() {
 #[test]
 fn ch_3_7_4_01_different_directives_per_document() {
     // Each document in a stream can have different directives
-    let input = "%YAML 1.2\n---\nfirst: doc1\n---\n%TAG !custom! tag:example.com,2000:/\nsecond: doc2\n";
+    let input =
+        "%YAML 1.2\n---\nfirst: doc1\n---\n%TAG !custom! tag:example.com,2000:/\nsecond: doc2\n";
     let result = Doc::from_str(input);
 
     // Directives are per-document, but same encoding required
@@ -991,7 +1033,10 @@ fn ch_3_7_5_03_comment_after_directive() {
     let result = Doc::from_str(input);
 
     // Should parse successfully
-    assert!(result.is_ok(), "Comments after directives should be allowed");
+    assert!(
+        result.is_ok(),
+        "Comments after directives should be allowed"
+    );
 }
 
 // 3.7.6 Partial Representation Edge Cases
@@ -1128,13 +1173,7 @@ fn ch_3_7_9_02_bom_inside_double_quoted_scalar() {
 #[test]
 fn ch_3_7_9_03_no_bom_ascii_start() {
     // Stream without BOM must begin with ASCII character
-    Fixture::new(
-        "3.7.9",
-        3,
-        "No BOM, ASCII start",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("3.7.9", 3, "No BOM, ASCII start", "key: value\n").run();
 }
 
 // 3.7.10 Cyclic Reference Equality Edge Cases

@@ -26,24 +26,12 @@ use forgo_lib_yaml::Doc;
 // 8.1.1 Block Scalar Headers
 #[test]
 fn ch_8_1_1_01_literal_basic() {
-    Fixture::new(
-        "8.1.1",
-        1,
-        "Basic literal block scalar",
-        "|\nfoo\nbar\n",
-    )
-    .run();
+    Fixture::new("8.1.1", 1, "Basic literal block scalar", "|\nfoo\nbar\n").run();
 }
 
 #[test]
 fn ch_8_1_1_02_folded_basic() {
-    Fixture::new(
-        "8.1.1",
-        2,
-        "Basic folded block scalar",
-        ">\nfoo\nbar\n",
-    )
-    .run();
+    Fixture::new("8.1.1", 2, "Basic folded block scalar", ">\nfoo\nbar\n").run();
 }
 
 // 8.1.1.1 Block Indentation Indicator
@@ -63,10 +51,15 @@ fn ch_8_1_1_1_02_indent_indicator_filters_lines() {
     Fixture::new(
         "8.1.1.1",
         2,
-        "Indent indicator filters insufficient indent",
-        "|3\n   acceptable\n    also acceptable\n  too little\n",
+        "Indent indicator: extra spaces are content",
+        "|3\n   acceptable\n    also acceptable\n",
     )
     .run();
+    // A less indented line ends the scalar; the leftover is an error.
+    assert!(
+        forgo_lib_yaml::Doc::from_str("|3\n   acceptable\n    also acceptable\n  too little\n")
+            .is_err()
+    );
 }
 
 #[test]
@@ -82,14 +75,9 @@ fn ch_8_1_1_1_03_no_indicator_uses_min_indent() {
 
 #[test]
 fn ch_8_1_1_1_04_indent_indicator_zero_invalid() {
-    Fixture::new(
-        "8.1.1.1",
-        4,
-        "Indent indicator 0 is invalid",
-        "|0\n  foo\n",
-    )
-    .expect_error("Parse")
-    .run();
+    Fixture::new("8.1.1.1", 4, "Indent indicator 0 is invalid", "|0\n  foo\n")
+        .expect_error("Parse")
+        .run();
 }
 
 // 8.1.1.2 Block Chomping Indicator
@@ -184,13 +172,7 @@ fn ch_8_1_2_03_literal_preserves_empty_lines() {
 
 #[test]
 fn ch_8_1_2_04_literal_single_line() {
-    Fixture::new(
-        "8.1.2",
-        4,
-        "Literal with single line",
-        "|\n  single line\n",
-    )
-    .run();
+    Fixture::new("8.1.2", 4, "Literal with single line", "|\n  single line\n").run();
 }
 
 // 8.1.3 Folded Style
@@ -256,13 +238,7 @@ fn ch_8_2_1_01_block_sequence_basic() {
 
 #[test]
 fn ch_8_2_1_02_block_sequence_numbers() {
-    Fixture::new(
-        "8.2.1",
-        2,
-        "Block sequence of numbers",
-        "- 1\n- 2\n- 3\n",
-    )
-    .run();
+    Fixture::new("8.2.1", 2, "Block sequence of numbers", "- 1\n- 2\n- 3\n").run();
 }
 
 #[test]
@@ -301,13 +277,7 @@ fn ch_8_2_1_05_block_sequence_of_mappings() {
 // 8.2.2 Block Mappings
 #[test]
 fn ch_8_2_2_01_block_mapping_basic() {
-    Fixture::new(
-        "8.2.2",
-        1,
-        "Basic block mapping",
-        "name: Alice\nage: 30\n",
-    )
-    .run();
+    Fixture::new("8.2.2", 1, "Basic block mapping", "name: Alice\nage: 30\n").run();
 }
 
 #[test]
@@ -393,13 +363,7 @@ fn ch_8_2_3_01_block_node_with_anchor() {
 
 #[test]
 fn ch_8_2_3_02_block_node_with_tag() {
-    Fixture::new(
-        "8.2.3",
-        2,
-        "Block node with tag",
-        "value: !!str\n  123\n",
-    )
-    .run();
+    Fixture::new("8.2.3", 2, "Block node with tag", "value: !!str\n  123\n").run();
 }
 
 #[test]
@@ -463,13 +427,7 @@ fn ch_8_3_03_block_scalar_with_comment() {
 
 #[test]
 fn ch_8_3_04_empty_block_scalar() {
-    Fixture::new(
-        "8.3",
-        4,
-        "Empty literal block scalar",
-        "|\n",
-    )
-    .run();
+    Fixture::new("8.3", 4, "Empty literal block scalar", "|\n").run();
 }
 
 // =============================================================================
@@ -559,101 +517,47 @@ fn ch_8_4_07_folded_with_keep_and_indent() {
 
 #[test]
 fn ch_8_5_01_indent_indicator_1() {
-    Fixture::new(
-        "8.5",
-        1,
-        "Indent indicator 1",
-        "|1\n text\n",
-    )
-    .run();
+    Fixture::new("8.5", 1, "Indent indicator 1", "|1\n text\n").run();
 }
 
 #[test]
 fn ch_8_5_02_indent_indicator_2() {
-    Fixture::new(
-        "8.5",
-        2,
-        "Indent indicator 2",
-        "|2\n  text\n",
-    )
-    .run();
+    Fixture::new("8.5", 2, "Indent indicator 2", "|2\n  text\n").run();
 }
 
 #[test]
 fn ch_8_5_03_indent_indicator_3() {
-    Fixture::new(
-        "8.5",
-        3,
-        "Indent indicator 3",
-        "|3\n   text\n",
-    )
-    .run();
+    Fixture::new("8.5", 3, "Indent indicator 3", "|3\n   text\n").run();
 }
 
 #[test]
 fn ch_8_5_04_indent_indicator_4() {
-    Fixture::new(
-        "8.5",
-        4,
-        "Indent indicator 4",
-        "|4\n    text\n",
-    )
-    .run();
+    Fixture::new("8.5", 4, "Indent indicator 4", "|4\n    text\n").run();
 }
 
 #[test]
 fn ch_8_5_05_indent_indicator_5() {
-    Fixture::new(
-        "8.5",
-        5,
-        "Indent indicator 5",
-        "|5\n     text\n",
-    )
-    .run();
+    Fixture::new("8.5", 5, "Indent indicator 5", "|5\n     text\n").run();
 }
 
 #[test]
 fn ch_8_5_06_indent_indicator_6() {
-    Fixture::new(
-        "8.5",
-        6,
-        "Indent indicator 6",
-        "|6\n      text\n",
-    )
-    .run();
+    Fixture::new("8.5", 6, "Indent indicator 6", "|6\n      text\n").run();
 }
 
 #[test]
 fn ch_8_5_07_indent_indicator_7() {
-    Fixture::new(
-        "8.5",
-        7,
-        "Indent indicator 7",
-        "|7\n       text\n",
-    )
-    .run();
+    Fixture::new("8.5", 7, "Indent indicator 7", "|7\n       text\n").run();
 }
 
 #[test]
 fn ch_8_5_08_indent_indicator_8() {
-    Fixture::new(
-        "8.5",
-        8,
-        "Indent indicator 8",
-        "|8\n        text\n",
-    )
-    .run();
+    Fixture::new("8.5", 8, "Indent indicator 8", "|8\n        text\n").run();
 }
 
 #[test]
 fn ch_8_5_09_indent_indicator_9() {
-    Fixture::new(
-        "8.5",
-        9,
-        "Indent indicator 9",
-        "|9\n         text\n",
-    )
-    .run();
+    Fixture::new("8.5", 9, "Indent indicator 9", "|9\n         text\n").run();
 }
 
 // =============================================================================
@@ -662,13 +566,7 @@ fn ch_8_5_09_indent_indicator_9() {
 
 #[test]
 fn ch_8_6_01_explicit_key_indicator_simple() {
-    Fixture::new(
-        "8.6",
-        1,
-        "Explicit key indicator (?)",
-        "? key\n: value\n",
-    )
-    .run();
+    Fixture::new("8.6", 1, "Explicit key indicator (?)", "? key\n: value\n").run();
 }
 
 #[test]

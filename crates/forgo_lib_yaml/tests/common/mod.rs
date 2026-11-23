@@ -80,7 +80,7 @@ impl Fixture {
                     );
                 }
                 Err(e) => {
-                    let err_msg = format!("{:?}", e);
+                    let err_msg = e.to_string();
                     assert!(
                         err_msg.contains(expected_err),
                         "Parse error '{}' does not contain expected substring '{}'",
@@ -95,10 +95,7 @@ impl Fixture {
 
         // Parse input
         let doc = Doc::from_str(self.input).unwrap_or_else(|e| {
-            panic!(
-                "Failed to parse input:\n{}\nError: {:?}",
-                self.input, e
-            );
+            panic!("Failed to parse input:\n{}\nError: {:?}", self.input, e);
         });
 
         // Emit to string

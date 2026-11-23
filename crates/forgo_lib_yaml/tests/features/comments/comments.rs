@@ -51,7 +51,8 @@ root: # trailing on root line ignored (root is a map)
     assert!(out.starts_with("# top banner"));
 
     // Inline trailing comment after value preserved on same line as the value
-    assert!(out.contains(r#"key: "value" # after value"#));
+    // A trailing comment doesn't force quotes on a plain value.
+    assert!(out.contains("key: value # after value"), "{out}");
 
     // Comment before item appears above it; trailing on item a preserved
     assert!(out.contains("# before item"));
@@ -106,11 +107,12 @@ fn quoted_scalar_as_seq_item_preserves_quotes() {
 }
 
 #[test]
-fn leading_and_trailing_comment_force_quotes_for_map_value() {
-    // To test that a value with both leading and trailing comments gets quoted,
-    // we need a structure where the leading comment is actually on the VALUE,
-    // not on the map itself. This requires nesting.
+fn leading_and_trailing_comments_keep_plain_map_value() {
+    // Comments around a value never change how the value is written.
     let d = Doc::from_str("root:\n  # before value\n  key: value # after value\n").unwrap();
     let out = d.to_string().unwrap();
-    assert!(out.contains(r#"key: "value" # after value"#), "{out}");
+    assert!(
+        out.contains("  # before value\n  key: value # after value\n"),
+        "{out}"
+    );
 }

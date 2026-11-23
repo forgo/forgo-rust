@@ -122,8 +122,28 @@ fn emit_block_scalar_for_multiline_strings() {
 
 #[test]
 fn quotes_colon_space_and_dot_keywords() {
-    let d = Doc::from_str("a: foo: bar\nb: .NaN\n").unwrap();
+    // `a: foo: bar` is invalid YAML (a mapping can't start on a key's line),
+    // so set the string values directly and check the emitter quotes them.
+    let mut d = Doc::from_str("a: x\nb: y\n").unwrap();
+    d.visit_values_mut(&["a"], |e| {
+        *e = forgo_lib_yaml::Elem::string("foo: bar");
+        true
+    });
+    d.visit_values_mut(&["b"], |e| {
+        *e = forgo_lib_yaml::Elem::string(".NaN");
+        true
+    });
     let out = d.to_string().unwrap();
-    assert!(out.contains(r#"a: "foo: bar""#)); // colon-space
-    assert!(out.contains(r#"b: ".NaN""#) || out.contains(r#"b: ".nan""#));
+    assert!(out.contains(r#"a: "foo: bar""#), "{out}"); // colon-space
+    assert!(out.contains(r#"b: ".NaN""#), "{out}"); // would otherwise be a float
+    // Plain `.NaN` in the source is a float under the core schema.
+    let f = Doc::from_str("b: .NaN\n").unwrap();
+    assert!(
+        f.root().node().as_map().unwrap()[0]
+            .1
+            .node()
+            .as_f64()
+            .unwrap()
+            .is_nan()
+    );
 }

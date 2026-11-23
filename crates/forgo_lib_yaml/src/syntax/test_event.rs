@@ -60,6 +60,7 @@ pub fn to_test_event(ev: &Event<'_>) -> String {
             tag,
             value,
             style,
+            ..
         } => {
             out.push_str("=VAL");
             props(&mut out, anchor, tag);

@@ -32,19 +32,28 @@ fn plain_scalar_with_colon_space_must_be_quoted_in_seq_items() {
 }
 
 #[test]
-fn glued_colon_is_normalized_for_unquoted_plain_scalars() {
-    // parser will classify as Str and emitter normalizes "k :v" -> "k:v"
+fn glued_colon_plain_scalar_is_emitted_unchanged() {
+    // "k :v" is one plain scalar (`:` followed by a non-space is content);
+    // the emitter never rewrites content.
     let d = doc("k :v\n");
+    assert_eq!(d.root().node().as_str(), Some("k :v"));
     let out = d.to_string().unwrap();
-    assert!(out.contains("k: v") || out.contains("k:v"), "{out}");
+    // Content is never rewritten (quotes are allowed until needs_quotes is exact).
+    assert!(out == "k :v\n" || out == "\"k :v\"\n", "{out}");
+    assert_eq!(doc(&out).root().node().as_str(), Some("k :v"));
 }
 
 #[test]
-fn http_scheme_spacing_is_fixed_not_broken() {
-    // Ensure "http ://" -> "http://"
+fn http_scheme_spacing_is_kept_as_written() {
+    // "http ://example.com" is a plain scalar; it is emitted as is.
     let d = doc("url: http ://example.com\n");
     let out = d.to_string().unwrap();
-    assert!(out.contains("url: http://example.com"), "{out}");
+    assert!(out.contains("http ://example.com"), "{out}");
+    let back = doc(&out);
+    assert_eq!(
+        back.root().node().as_map().unwrap()[0].1.node().as_str(),
+        Some("http ://example.com")
+    );
 }
 
 #[test]

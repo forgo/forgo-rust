@@ -4,7 +4,6 @@ use std::fs;
 use std::path::Path;
 
 use crate::emitter::Emitter;
-use crate::parser::Parser;
 
 /// Path segment for traversal. `*` is a wildcard.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -145,26 +144,26 @@ impl Scalar {
         }
     }
 
-    /// Parse as signed integer if this scalar is a number
+    /// The value as a signed integer (decimal, `0o` octal or `0x` hex).
     pub fn as_i64(&self) -> Option<i64> {
         match self {
-            Scalar::Num { text } => text.parse().ok(),
+            Scalar::Num { text } => crate::schema::int_value(text)?.try_into().ok(),
             _ => None,
         }
     }
 
-    /// Parse as float if this scalar is a number
+    /// The value as a float, including integers and `.inf`/`.nan`.
     pub fn as_f64(&self) -> Option<f64> {
         match self {
-            Scalar::Num { text } => text.parse().ok(),
+            Scalar::Num { text } => crate::schema::float_value(text),
             _ => None,
         }
     }
 
-    /// Parse as unsigned integer if this scalar is a number
+    /// The value as an unsigned integer (decimal, `0o` octal or `0x` hex).
     pub fn as_u64(&self) -> Option<u64> {
         match self {
-            Scalar::Num { text } => text.parse().ok(),
+            Scalar::Num { text } => crate::schema::int_value(text)?.try_into().ok(),
             _ => None,
         }
     }
@@ -178,6 +177,8 @@ impl Scalar {
     }
 
     /// Convert scalar to string representation
+    // Public API predating `Display`; kept for compatibility.
+    #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         match self {
             Scalar::Str(s) => s.clone(),
@@ -325,6 +326,8 @@ pub enum MapKey {
 
 impl MapKey {
     /// Create a string key
+    // Public API (takes `impl Into<String>`, so it isn't `FromStr`).
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: impl Into<String>) -> Self {
         MapKey::Str(s.into())
     }
@@ -334,11 +337,19 @@ impl MapKey {
         MapKey::Complex(Box::new(elem))
     }
 
-    /// Get as string if this is a string key
+    /// The key's text: a string key, or a scalar key without a string
+    /// type (`200`, `true`) as written. `None` for null, alias and
+    /// collection keys.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             MapKey::Str(s) => Some(s),
-            MapKey::Complex(_) => None,
+            MapKey::Complex(e) => match &e.node {
+                Node::Scalar(Scalar::Str(s)) => Some(s),
+                Node::Scalar(Scalar::Num { text }) => Some(text),
+                Node::Scalar(Scalar::Bool(true)) => Some("true"),
+                Node::Scalar(Scalar::Bool(false)) => Some("false"),
+                _ => None,
+            },
         }
     }
 
@@ -361,31 +372,71 @@ impl MapKey {
     }
 }
 
-// Allow comparing MapKey with &str for convenience
+impl MapKey {
+    /// Does this key match `text`? String and scalar keys compare by their
+    /// text; a null key matches any null spelling (`null`, `~`, ...).
+    fn matches_text(&self, text: &str) -> bool {
+        if self.as_str() == Some(text) {
+            return true;
+        }
+        matches!(self, MapKey::Complex(e) if matches!(e.node, Node::Scalar(Scalar::Null)))
+            && crate::schema::is_null(text)
+    }
+
+    /// A canonical form for comparing keys by value (YAML 1.2.2 §3.2.1.1):
+    /// `a` and `"a"` are equal, as are `0x1` and `1`.
+    pub(crate) fn canonical(&self) -> String {
+        match self {
+            MapKey::Str(s) => format!("s:{s}"),
+            MapKey::Complex(e) => canonical_elem(e),
+        }
+    }
+}
+
+fn canonical_elem(e: &Elem) -> String {
+    match &e.node {
+        Node::Scalar(Scalar::Str(s)) => format!("s:{s}"),
+        Node::Scalar(Scalar::Bool(b)) => format!("b:{b}"),
+        Node::Scalar(Scalar::Null) => "n".into(),
+        Node::Scalar(Scalar::Num { text }) => match crate::schema::int_value(text) {
+            Some(i) if crate::schema::is_int(text) => format!("i:{i}"),
+            _ => format!(
+                "f:{}",
+                crate::schema::float_value(text).map_or_else(|| text.clone(), |f| format!("{f:?}"))
+            ),
+        },
+        Node::Alias(a) => format!("*{a}"),
+        Node::Seq(items) => {
+            let parts: Vec<String> = items.iter().map(canonical_elem).collect();
+            format!("[{}]", parts.join(","))
+        }
+        Node::Map(entries) => {
+            let mut parts: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("{}={}", k.canonical(), canonical_elem(v)))
+                .collect();
+            parts.sort();
+            format!("{{{}}}", parts.join(","))
+        }
+    }
+}
+
+// Compare a key with text: string keys and scalar keys by their text.
 impl PartialEq<str> for MapKey {
     fn eq(&self, other: &str) -> bool {
-        match self {
-            MapKey::Str(s) => s == other,
-            MapKey::Complex(_) => false,
-        }
+        self.matches_text(other)
     }
 }
 
 impl PartialEq<String> for MapKey {
     fn eq(&self, other: &String) -> bool {
-        match self {
-            MapKey::Str(s) => s == other,
-            MapKey::Complex(_) => false,
-        }
+        self.matches_text(other)
     }
 }
 
 impl PartialEq<&str> for MapKey {
     fn eq(&self, other: &&str) -> bool {
-        match self {
-            MapKey::Str(s) => s == *other,
-            MapKey::Complex(_) => false,
-        }
+        self.matches_text(other)
     }
 }
 
@@ -599,6 +650,10 @@ pub struct Doc {
     pub explicit_start: bool,
     /// Was this document explicitly ended with `...`?
     pub explicit_end: bool,
+    /// Comments after the document's last node.
+    pub(crate) footer_comments: Vec<String>,
+    /// The source stream had no document at all (only comments or nothing).
+    pub(crate) no_content: bool,
 }
 
 /// Error type (no deps).
@@ -657,78 +712,151 @@ impl Doc {
         self.explicit_end
     }
 
-    /// Parse from UTF-8 string.
-    /// If input contains multiple documents, only the first is returned.
-    /// Use from_stream() to parse all documents in a multi-document stream.
-    pub fn from_str(input: &str) -> Result<Self, Error> {
-        let mut p = Parser::new(input);
-        p.parse_document()
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_parts(
+        root: Elem,
+        had_leading_blank: bool,
+        saw_carriage_return: bool,
+        yaml_version: Option<(u8, u8)>,
+        tag_handles: Vec<(String, String)>,
+        explicit_start: bool,
+        explicit_end: bool,
+        footer_comments: Vec<String>,
+    ) -> Self {
+        Doc {
+            root,
+            had_leading_blank,
+            saw_carriage_return,
+            yaml_version,
+            tag_handles,
+            explicit_start,
+            explicit_end,
+            footer_comments,
+            no_content: false,
+        }
     }
 
-    /// Parse a full YAML stream (possibly multiple documents separated by `---`/`...`).
+    /// A document for a stream that holds no document, keeping its comments.
+    pub(crate) fn empty_with_comments(comments: Vec<String>) -> Self {
+        let mut d = Doc::from_parts(
+            Elem::new(Node::Scalar(Scalar::Null)),
+            false,
+            false,
+            None,
+            Vec::new(),
+            false,
+            false,
+            comments,
+        );
+        d.no_content = true;
+        d
+    }
+
+    /// Comments after the document's last node.
+    pub fn footer_comments(&self) -> &[String] {
+        &self.footer_comments
+    }
+
+    /// Parse the first document of a YAML stream. The whole stream must be
+    /// valid. A stream without documents yields an empty document (null
+    /// root) that keeps the stream's comments.
+    // Public API; `str::parse::<Doc>()` works through the `FromStr` impl below.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(input: &str) -> Result<Self, Error> {
+        crate::compose::compose_first(input)
+    }
+
+    /// Parse every document of a YAML stream.
     pub fn from_stream(input: &str) -> Result<Vec<Self>, Error> {
-        let mut p = Parser::new(input);
-        p.parse_stream()
+        crate::compose::compose_stream(input)
+    }
+
+    /// Decode a byte stream (UTF-8, UTF-16 or UTF-32, detected per YAML
+    /// 1.2.2 §5.2) and parse its first document.
+    pub fn from_slice(bytes: &[u8]) -> Result<Self, Error> {
+        let text = crate::syntax::input::decode(bytes)?;
+        Self::from_str(&text)
     }
 
     /// Emit as canonical string (dash-lists, stable indentation, comments).
+    /// Directives are written (followed by `---`) when the document has any.
     pub fn to_string(&self) -> Result<String, Error> {
         let mut out = String::new();
-        // If the first thing we’ll emit is a comment (either on the root
-        // or on the first child of a map/seq), don’t add the preserved
-        // leading blank line — tests expect the comment to be first.
+        // If the first thing we'll emit is a comment, don't add the preserved
+        // leading blank line: the comment should come first.
         let begins_with_comment = !self.root.meta.leading_comments.is_empty()
             || match &self.root.node {
                 crate::ast::Node::Map(entries) => entries
                     .first()
-                    .map_or(false, |(_, v)| !v.meta.leading_comments.is_empty()),
+                    .is_some_and(|(_, v)| !v.meta.leading_comments.is_empty()),
                 crate::ast::Node::Seq(items) => items
                     .first()
-                    .map_or(false, |e| !e.meta.leading_comments.is_empty()),
+                    .is_some_and(|e| !e.meta.leading_comments.is_empty()),
                 _ => false,
             };
-
-        // Preserve original leading blank if present and not overshadowed by banner comments.
-        if self.had_leading_blank && !begins_with_comment {
+        if self.had_leading_blank && !begins_with_comment && !self.no_content {
             out.push('\n');
         }
-
-        Emitter::emit_elem(&self.root, 0, &mut out)?;
+        self.emit_directives(&mut out)?;
+        if self.yaml_version.is_some() || !self.tag_handles.is_empty() {
+            out.push_str("---\n");
+        }
+        self.emit_body(&mut out)?;
         Ok(out)
+    }
+
+    fn emit_directives(&self, out: &mut String) -> Result<(), Error> {
+        use std::fmt::Write;
+        if let Some((maj, min)) = self.yaml_version {
+            writeln!(out, "%YAML {maj}.{min}")?;
+        }
+        for (handle, prefix) in &self.tag_handles {
+            writeln!(out, "%TAG {handle} {prefix}")?;
+        }
+        Ok(())
+    }
+
+    fn emit_body(&self, out: &mut String) -> Result<(), Error> {
+        if !self.no_content {
+            Emitter::emit_root(&self.root, out)?;
+        }
+        for c in &self.footer_comments {
+            out.push('#');
+            if !c.is_empty() {
+                out.push(' ');
+                out.push_str(c);
+            }
+            out.push('\n');
+        }
+        Ok(())
     }
 
     /// Emit a full stream.
     pub fn to_stream_string(docs: &[Self]) -> Result<String, Error> {
         let mut out = String::new();
-        let mut first = true;
-        for d in docs {
-            if !first {
-                // separate docs with newline if needed
-                if !out.ends_with('\n') {
-                    out.push('\n');
-                }
+        for (i, d) in docs.iter().enumerate() {
+            if i > 0 && !out.ends_with('\n') {
+                out.push('\n');
             }
-            first = false;
-            d.emit_one_into(&mut out)?;
+            d.emit_one_into(&mut out, i > 0)?;
         }
         Ok(out)
     }
 
-    fn emit_one_into(&self, out: &mut String) -> Result<(), Error> {
-        use std::fmt::Write;
-        // Directives must precede `---` and the doc content.
-        if let Some((maj, min)) = self.yaml_version {
-            writeln!(out, "%YAML {maj}.{min}").map_err(Error::from)?;
+    fn emit_one_into(&self, out: &mut String, follows_document: bool) -> Result<(), Error> {
+        // Directives must precede `---`; after another document they also
+        // need that document to end with `...`.
+        let has_directives = self.yaml_version.is_some() || !self.tag_handles.is_empty();
+        if has_directives && follows_document && !out.ends_with("...\n") {
+            out.push_str("...\n");
         }
-        for (handle, prefix) in &self.tag_handles {
-            writeln!(out, "%TAG {} {}", handle, prefix).map_err(Error::from)?;
+        self.emit_directives(out)?;
+        if self.explicit_start || has_directives || follows_document {
+            out.push_str("---\n");
         }
-        if self.explicit_start || self.yaml_version.is_some() || !self.tag_handles.is_empty() {
-            writeln!(out, "---").map_err(Error::from)?;
-        }
-        Emitter::emit_elem(&self.root, 0, out)?;
+        self.emit_body(out)?;
         if self.explicit_end {
-            writeln!(out, "...").map_err(Error::from)?;
+            out.push_str("...\n");
         }
         Ok(())
     }
@@ -766,7 +894,7 @@ impl Doc {
                 Node::Map(entries) => match &path[0] {
                     Seg::Key(k) => entries
                         .iter_mut()
-                        .find(|(kk, _)| kk == k)
+                        .rfind(|(kk, _)| kk == k)
                         .map(|(_, child)| go(child, &path[1..], f))
                         .unwrap_or(false),
                     Seg::Wildcard => {
@@ -811,7 +939,7 @@ impl Doc {
             }
             match (&mut node.node, &path[0]) {
                 (Node::Map(entries), Seg::Key(k)) => {
-                    if let Some((_, v)) = entries.iter_mut().find(|(kk, _)| kk == k) {
+                    if let Some((_, v)) = entries.iter_mut().rfind(|(kk, _)| kk == k) {
                         go(v, &path[1..], hit, f);
                     }
                 }
@@ -849,7 +977,7 @@ impl Doc {
             }
             match (&mut node.node, &path[0]) {
                 (Node::Map(entries), Seg::Key(k)) => {
-                    if let Some((_, v)) = entries.iter_mut().find(|(kk, _)| kk == k) {
+                    if let Some((_, v)) = entries.iter_mut().rfind(|(kk, _)| kk == k) {
                         go(v, &path[1..], hit, f);
                     }
                 }
@@ -871,6 +999,46 @@ impl Doc {
         hit
     }
 
+    /// Check that no mapping has two equal keys (YAML 1.2.2 §3.2.1.1).
+    /// Keys compare by value: `a`/`"a"` and `1`/`0x1` are duplicates.
+    /// Parsing keeps duplicates (lookups use the last one); call this to
+    /// enforce the spec's uniqueness rule.
+    pub fn check_unique_keys(&self) -> Result<(), Error> {
+        fn go(e: &Elem, path: &mut Vec<String>) -> Result<(), Error> {
+            match &e.node {
+                Node::Map(entries) => {
+                    let mut seen = std::collections::HashSet::new();
+                    for (k, v) in entries {
+                        if !seen.insert(k.canonical()) {
+                            let at = if path.is_empty() {
+                                String::from("the root mapping")
+                            } else {
+                                format!("`{}`", path.join("."))
+                            };
+                            return Err(Error::Parse(format!(
+                                "duplicate mapping key `{k}` in {at}"
+                            )));
+                        }
+                        path.push(k.to_string());
+                        go(v, path)?;
+                        path.pop();
+                    }
+                    Ok(())
+                }
+                Node::Seq(items) => {
+                    for (i, it) in items.iter().enumerate() {
+                        path.push(i.to_string());
+                        go(it, path)?;
+                        path.pop();
+                    }
+                    Ok(())
+                }
+                _ => Ok(()),
+            }
+        }
+        go(&self.root, &mut Vec::new())
+    }
+
     /// Borrow the root element.
     pub fn root(&self) -> &Elem {
         &self.root
@@ -879,5 +1047,13 @@ impl Doc {
     /// Mutably borrow the root element.
     pub fn root_mut(&mut self) -> &mut Elem {
         &mut self.root
+    }
+}
+
+impl std::str::FromStr for Doc {
+    type Err = Error;
+
+    fn from_str(input: &str) -> Result<Self, Error> {
+        crate::compose::compose_first(input)
     }
 }

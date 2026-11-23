@@ -75,13 +75,7 @@ fn ch_7_1_04_alias_spacing_in_flow_collection() {
 
 #[test]
 fn ch_7_2_01_empty_scalar() {
-    Fixture::new(
-        "7.2",
-        1,
-        "Empty scalar node",
-        "key: \n",
-    )
-    .run();
+    Fixture::new("7.2", 1, "Empty scalar node", "key: \n").run();
 }
 
 #[test]
@@ -97,13 +91,7 @@ fn ch_7_2_02_empty_in_flow_sequence() {
 
 #[test]
 fn ch_7_2_03_empty_value_in_mapping() {
-    Fixture::new(
-        "7.2",
-        3,
-        "Empty value in mapping",
-        "key:\nother: value\n",
-    )
-    .run();
+    Fixture::new("7.2", 3, "Empty value in mapping", "key:\nother: value\n").run();
 }
 
 // ============================================================================
@@ -113,13 +101,7 @@ fn ch_7_2_03_empty_value_in_mapping() {
 // 7.3.1 Double-Quoted Style
 #[test]
 fn ch_7_3_1_01_double_quoted_basic() {
-    Fixture::new(
-        "7.3.1",
-        1,
-        "Basic double-quoted scalar",
-        "key: \"value\"\n",
-    )
-    .run();
+    Fixture::new("7.3.1", 1, "Basic double-quoted scalar", "key: \"value\"\n").run();
 }
 
 #[test]
@@ -180,13 +162,7 @@ fn ch_7_3_1_06_double_quoted_carriage_return() {
 // 7.3.2 Single-Quoted Style
 #[test]
 fn ch_7_3_2_01_single_quoted_basic() {
-    Fixture::new(
-        "7.3.2",
-        1,
-        "Basic single-quoted scalar",
-        "key: 'value'\n",
-    )
-    .run();
+    Fixture::new("7.3.2", 1, "Basic single-quoted scalar", "key: 'value'\n").run();
 }
 
 #[test]
@@ -225,57 +201,27 @@ fn ch_7_3_2_04_single_quoted_special_chars() {
 // 7.3.3 Plain Style
 #[test]
 fn ch_7_3_3_01_plain_string() {
-    Fixture::new(
-        "7.3.3",
-        1,
-        "Plain scalar string",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("7.3.3", 1, "Plain scalar string", "key: value\n").run();
 }
 
 #[test]
 fn ch_7_3_3_02_plain_number() {
-    Fixture::new(
-        "7.3.3",
-        2,
-        "Plain scalar number",
-        "count: 42\n",
-    )
-    .run();
+    Fixture::new("7.3.3", 2, "Plain scalar number", "count: 42\n").run();
 }
 
 #[test]
 fn ch_7_3_3_03_plain_boolean() {
-    Fixture::new(
-        "7.3.3",
-        3,
-        "Plain scalar boolean",
-        "enabled: true\n",
-    )
-    .run();
+    Fixture::new("7.3.3", 3, "Plain scalar boolean", "enabled: true\n").run();
 }
 
 #[test]
 fn ch_7_3_3_04_plain_null() {
-    Fixture::new(
-        "7.3.3",
-        4,
-        "Plain scalar null",
-        "value: null\n",
-    )
-    .run();
+    Fixture::new("7.3.3", 4, "Plain scalar null", "value: null\n").run();
 }
 
 #[test]
 fn ch_7_3_3_05_plain_tilde_null() {
-    Fixture::new(
-        "7.3.3",
-        5,
-        "Plain scalar tilde as null",
-        "value: ~\n",
-    )
-    .run();
+    Fixture::new("7.3.3", 5, "Plain scalar tilde as null", "value: ~\n").run();
 }
 
 #[test]
@@ -291,13 +237,7 @@ fn ch_7_3_3_06_plain_with_spaces() {
 
 #[test]
 fn ch_7_3_3_07_plain_url() {
-    Fixture::new(
-        "7.3.3",
-        7,
-        "Plain scalar URL",
-        "url: https://example.com\n",
-    )
-    .run();
+    Fixture::new("7.3.3", 7, "Plain scalar URL", "url: https://example.com\n").run();
 }
 
 // ============================================================================
@@ -307,24 +247,12 @@ fn ch_7_3_3_07_plain_url() {
 // 7.4.1 Flow Sequences
 #[test]
 fn ch_7_4_1_01_flow_sequence_basic() {
-    Fixture::new(
-        "7.4.1",
-        1,
-        "Basic flow sequence",
-        "items: [a, b, c]\n",
-    )
-    .run();
+    Fixture::new("7.4.1", 1, "Basic flow sequence", "items: [a, b, c]\n").run();
 }
 
 #[test]
 fn ch_7_4_1_02_flow_sequence_numbers() {
-    Fixture::new(
-        "7.4.1",
-        2,
-        "Flow sequence of numbers",
-        "nums: [1, 2, 3]\n",
-    )
-    .run();
+    Fixture::new("7.4.1", 2, "Flow sequence of numbers", "nums: [1, 2, 3]\n").run();
 }
 
 #[test]
@@ -351,13 +279,7 @@ fn ch_7_4_1_04_flow_sequence_nested() {
 
 #[test]
 fn ch_7_4_1_05_flow_sequence_empty() {
-    Fixture::new(
-        "7.4.1",
-        5,
-        "Empty flow sequence",
-        "empty: []\n",
-    )
-    .run();
+    Fixture::new("7.4.1", 5, "Empty flow sequence", "empty: []\n").run();
 }
 
 #[test]
@@ -374,13 +296,7 @@ fn ch_7_4_1_06_flow_sequence_single_item() {
 // 7.4.2 Flow Mappings
 #[test]
 fn ch_7_4_2_01_flow_mapping_basic() {
-    Fixture::new(
-        "7.4.2",
-        1,
-        "Basic flow mapping",
-        "point: {x: 1, y: 2}\n",
-    )
-    .run();
+    Fixture::new("7.4.2", 1, "Basic flow mapping", "point: {x: 1, y: 2}\n").run();
 }
 
 #[test]
@@ -407,13 +323,7 @@ fn ch_7_4_2_03_flow_mapping_nested() {
 
 #[test]
 fn ch_7_4_2_04_flow_mapping_empty() {
-    Fixture::new(
-        "7.4.2",
-        4,
-        "Empty flow mapping",
-        "empty: {}\n",
-    )
-    .run();
+    Fixture::new("7.4.2", 4, "Empty flow mapping", "empty: {}\n").run();
 }
 
 #[test]
@@ -454,13 +364,7 @@ fn ch_7_5_01_flow_node_with_anchor() {
 
 #[test]
 fn ch_7_5_02_flow_node_with_tag() {
-    Fixture::new(
-        "7.5",
-        2,
-        "Flow node with tag",
-        "value: !!str 123\n",
-    )
-    .run();
+    Fixture::new("7.5", 2, "Flow node with tag", "value: !!str 123\n").run();
 }
 
 #[test]
@@ -544,12 +448,15 @@ fn ch_7_6_04_complex_flow_structure() {
 
 #[test]
 fn ch_7_7_1_01_missing_comma_in_sequence() {
-    let input = "[a b c]\n";
-    let result = Doc::from_str(input);
-    assert!(
-        result.is_err(),
-        "Flow sequence should reject missing comma between items"
-    );
+    // `[a b c]` is one plain scalar "a b c"; separate nodes need commas.
+    let one = Doc::from_str("[a b c]\n").unwrap();
+    assert_eq!(one.root().node().as_seq().unwrap().len(), 1);
+    for input in ["[\"a\" \"b\"]\n", "[{a: 1} {b: 2}]\n", "[[a] b]\n"] {
+        assert!(
+            Doc::from_str(input).is_err(),
+            "Flow sequence should reject missing comma between items: {input:?}"
+        );
+    }
 }
 
 #[test]
@@ -673,7 +580,7 @@ fn ch_7_7_2_04_multiline_double_quoted_scalar() {
         "7.7.2",
         4,
         "Multiline double-quoted flow scalar",
-        "text: \"This is a long \\\nstring that spans \\\nmultiple lines\"\n",
+        "text: \"This is a long \\\n  string that spans \\\n  multiple lines\"\n",
     )
     .run();
 }
@@ -684,7 +591,7 @@ fn ch_7_7_2_05_multiline_single_quoted_scalar() {
         "7.7.2",
         5,
         "Multiline single-quoted flow scalar",
-        "text: 'This is a long\nstring that spans\nmultiple lines'\n",
+        "text: 'This is a long\n  string that spans\n  multiple lines'\n",
     )
     .run();
 }
@@ -802,30 +709,27 @@ fn ch_7_7_4_04_deeply_nested_with_values() {
 
 #[test]
 fn ch_7_7_5_01_duplicate_keys_simple() {
-    let input = "{a: 1, a: 2}\n";
-    let result = Doc::from_str(input);
+    // Duplicates are kept like in block mappings; the opt-in check rejects them.
+    let d = Doc::from_str("{a: 1, a: 2}\n").unwrap();
+    assert_eq!(d.root().node().as_map().unwrap().len(), 2);
     assert!(
-        result.is_err(),
-        "Flow mapping should reject duplicate keys"
+        d.check_unique_keys().is_err(),
+        "duplicate keys must be reported"
     );
 }
 
 #[test]
 fn ch_7_7_5_02_duplicate_keys_different_quotes() {
-    let input = "{a: 1, 'a': 2}\n";
-    let result = Doc::from_str(input);
+    let d = Doc::from_str("{a: 1, 'a': 2}\n").unwrap();
     assert!(
-        result.is_err(),
-        "Flow mapping should reject duplicate keys with different quoting"
+        d.check_unique_keys().is_err(),
+        "keys that differ only in quoting are duplicates"
     );
 }
 
 #[test]
 fn ch_7_7_5_03_duplicate_keys_nested() {
-    let input = "{outer: {a: 1, a: 2}}\n";
-    let result = Doc::from_str(input);
-    assert!(
-        result.is_err(),
-        "Nested flow mapping should reject duplicate keys"
-    );
+    let d = Doc::from_str("{outer: {a: 1, a: 2}}\n").unwrap();
+    let err = d.check_unique_keys().unwrap_err().to_string();
+    assert!(err.contains("`outer`"), "{err}");
 }

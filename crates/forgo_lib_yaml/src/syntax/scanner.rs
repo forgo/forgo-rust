@@ -12,12 +12,11 @@
 //! - `#` starts a comment only at the start of a line or after white space;
 //! - keys in flow mappings may span lines, and `:` may follow a JSON-like
 //!   key without a space;
-//! - block scalars at the top level may start at column 0, and their
-//!   explicit indentation indicator counts from the parent indent (-1);
+//! - block scalars at the top level may start at column 0;
 //! - nodes must be separated by white space or an indicator.
 
 use super::chars::*;
-use super::event::{Mark, ScalarStyle};
+use super::event::{BlockHeader, Chomping, Mark, ScalarStyle};
 use crate::ast::Error;
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -46,7 +45,8 @@ pub(crate) enum TokenKind<'a> {
     Anchor(Cow<'a, str>),
     /// (handle, suffix). A verbatim tag has an empty handle.
     Tag(Cow<'a, str>, Cow<'a, str>),
-    Scalar(Cow<'a, str>, ScalarStyle),
+    /// Value, style, and the header of a block scalar.
+    Scalar(Cow<'a, str>, ScalarStyle, Option<BlockHeader>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -360,7 +360,7 @@ impl<'a> Scanner<'a> {
 
     fn push(&mut self, kind: TokenKind<'a>, start: Mark, end: Mark) {
         self.last_kind = match kind {
-            TokenKind::Scalar(_, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted)
+            TokenKind::Scalar(_, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted, _)
             | TokenKind::FlowSequenceEnd
             | TokenKind::FlowMappingEnd => LastToken::JsonNode,
             TokenKind::Scalar(..)
@@ -512,10 +512,15 @@ impl<'a> Scanner<'a> {
                 }
             }
             // Inside flow collections, every content line must be indented
-            // more than the enclosing block (spaces only).
+            // more than the enclosing block (spaces only). A line that only
+            // closes the collection is exempt, as in yaml-rust2 and saphyr
+            // (the strict grammar would require its indentation too).
             if line_start
                 && !self.flows.is_empty()
-                && !matches!(self.byte_at(0), None | Some(b'\n' | b'\r' | b'#'))
+                && !matches!(
+                    self.byte_at(0),
+                    None | Some(b'\n' | b'\r' | b'#' | b']' | b'}')
+                )
                 && (spaces as i64) <= self.indent
             {
                 return Err(self.err_here(
@@ -1166,11 +1171,14 @@ impl<'a> Scanner<'a> {
         }
         self.skip_break();
 
-        // Content indentation: the parent indent (-1 at the top level)
-        // plus the indicator, or auto-detected.
+        // Content indentation: the parent indent plus the indicator, or
+        // auto-detected (at least parent + 1, so column 0 at the top level).
+        // For an explicit indicator the top level counts as indent 0, as in
+        // libyaml, yaml-rust2 and saphyr; the grammar read literally
+        // (n = -1) would give one less, a case the test suite doesn't cover.
         let parent = self.indent;
         let mut indent: i64 = if increment > 0 {
-            parent + increment
+            parent.max(0) + increment
         } else {
             -1
         };
@@ -1239,7 +1247,18 @@ impl<'a> Scanner<'a> {
             ScalarStyle::Folded
         };
         Ok(Token {
-            kind: TokenKind::Scalar(Cow::Owned(string), style),
+            kind: TokenKind::Scalar(
+                Cow::Owned(string),
+                style,
+                Some(BlockHeader {
+                    chomping: match chomping {
+                        -1 => Chomping::Strip,
+                        1 => Chomping::Keep,
+                        _ => Chomping::Clip,
+                    },
+                    indent: (increment > 0).then_some(increment as u8),
+                }),
+            ),
             start,
             end,
         })
@@ -1562,7 +1581,7 @@ impl<'a> Scanner<'a> {
             ScalarStyle::DoubleQuoted
         };
         Ok(Token {
-            kind: TokenKind::Scalar(value, style),
+            kind: TokenKind::Scalar(value, style, None),
             start,
             end: self.mark,
         })
@@ -1678,7 +1697,10 @@ impl<'a> Scanner<'a> {
                 };
                 if flow {
                     if (spaces as i64) <= self.indent
-                        && !matches!(self.byte_at(0), None | Some(b'#' | b'\n' | b'\r'))
+                        && !matches!(
+                            self.byte_at(0),
+                            None | Some(b'#' | b'\n' | b'\r' | b']' | b'}')
+                        )
                     {
                         return Err(self.err_here(
                             "flow content must be indented more than the enclosing block (tabs don't count)",
@@ -1698,7 +1720,7 @@ impl<'a> Scanner<'a> {
             None => Cow::Borrowed(&self.src[start.index..end.index]),
         };
         Ok(Token {
-            kind: TokenKind::Scalar(value, ScalarStyle::Plain),
+            kind: TokenKind::Scalar(value, ScalarStyle::Plain, None),
             start,
             end,
         })
@@ -1716,7 +1738,7 @@ mod tests {
             let t = s.next_token().unwrap();
             let done = t.kind == TokenKind::StreamEnd;
             out.push(match t.kind {
-                TokenKind::Scalar(v, _) => format!("S({v})"),
+                TokenKind::Scalar(v, ..) => format!("S({v})"),
                 k => format!("{k:?}"),
             });
             if done {
@@ -1759,10 +1781,13 @@ mod tests {
         let mut s = Scanner::new("a b\n");
         s.next_token().unwrap();
         let t = s.next_token().unwrap();
-        assert!(matches!(t.kind, TokenKind::Scalar(Cow::Borrowed("a b"), _)));
+        assert!(matches!(
+            t.kind,
+            TokenKind::Scalar(Cow::Borrowed("a b"), ..)
+        ));
         let mut s = Scanner::new("a\n b\n");
         s.next_token().unwrap();
         let t = s.next_token().unwrap();
-        assert!(matches!(t.kind, TokenKind::Scalar(Cow::Owned(ref v), _) if v == "a b"));
+        assert!(matches!(t.kind, TokenKind::Scalar(Cow::Owned(ref v), ..) if v == "a b"));
     }
 }

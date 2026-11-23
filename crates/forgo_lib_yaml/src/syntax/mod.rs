@@ -4,14 +4,14 @@
 //! Comments are collected on the side ([`Events::comments`]) so the
 //! composer can attach them to nodes.
 
-mod chars;
+pub(crate) mod chars;
 mod event;
 pub mod input;
 mod parser;
 mod scanner;
 pub mod test_event;
 
-pub use event::{Event, Mark, ScalarStyle, Span, Tag};
+pub use event::{BlockHeader, Chomping, Event, Mark, ScalarStyle, Span, Tag};
 pub use parser::Events;
 pub use scanner::Comment;
 

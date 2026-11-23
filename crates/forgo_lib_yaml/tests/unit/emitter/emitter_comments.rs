@@ -49,8 +49,8 @@ fn trailing_comment_does_not_force_quotes_for_simple_value() {
 
 #[test]
 fn trailing_comment_keeps_quotes_when_needed() {
-    // value contains a colon -> must be quoted
-    let d = Doc::from_str("k: a: b # t\n").unwrap();
+    // value contains ": " -> must stay quoted (`k: a: b` would be invalid)
+    let d = Doc::from_str("k: \"a: b\" # t\n").unwrap();
     let out = d.to_string().unwrap();
     assert!(
         out.contains("k: \"a: b\" # t") || out.contains("k: 'a: b' # t"),

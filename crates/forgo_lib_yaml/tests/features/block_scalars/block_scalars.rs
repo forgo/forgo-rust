@@ -25,11 +25,11 @@ fn indent_indicator_and_folding() {
     let d = Doc::from_str(s).unwrap();
     let out = d.to_string().unwrap();
 
-    // The parsed body should be "a\nb\n\nc\n" (no leading spaces - stripped by base_indent)
-    // The emitted output will have consistent 2-space indentation for block scalar lines
+    // The parsed body is "a\nb\n\nc\n"; empty lines are emitted without indentation.
+    assert_eq!(d.root().node().as_str(), Some("a\nb\n\nc\n"));
     assert!(
-        out.contains("  a\n  b\n  \n  c\n"),
-        "Expected substring '  a\\n  b\\n  \\n  c\\n' (with 2-space indents) in output.\nGot: {:?}",
+        out.contains("  a\n  b\n\n  c\n"),
+        "Expected substring '  a\\n  b\\n\\n  c\\n' in output.\nGot: {:?}",
         out
     );
 

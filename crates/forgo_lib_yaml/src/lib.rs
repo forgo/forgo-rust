@@ -10,18 +10,14 @@
 //! Extend incrementally in lexer/parser/emitter where marked by `// EXTEND:`.
 
 mod ast;
-mod char_validator;
+mod compose;
 mod editor;
 mod emitter;
 mod emitter_helpers;
-mod flow_validator;
-mod lexer;
-mod parser;
-mod parser_helpers;
+mod schema;
 pub mod syntax;
 mod util;
 
-pub use crate::lexer::{Lexer, Tok};
 pub use ast::{Doc, Elem, Error, IntoPath, MapKey, Node, Scalar, Seg};
 pub use editor::{edit_file_in_place, normalize_string_list};
 pub use syntax::{Event, Events, Mark, ScalarStyle, Span, Tag, events, events_from_bytes};
@@ -79,22 +75,4 @@ pub fn stringify(doc: &Doc) -> Result<String, Error> {
 /// ```
 pub fn parse_all(input: &str) -> Result<Vec<Doc>, Error> {
     Doc::from_stream(input)
-}
-
-// ============================================================================
-// Debug Utilities
-// ============================================================================
-
-pub fn debug_token_dump(input: &str) -> String {
-    let mut lx = crate::lexer::Lexer::new(input);
-    let mut out = String::new();
-    loop {
-        let t = lx.next_token();
-        use std::fmt::Write;
-        let _ = writeln!(out, "{t:?}");
-        if matches!(t, crate::lexer::Tok::Eof) {
-            break;
-        }
-    }
-    out
 }

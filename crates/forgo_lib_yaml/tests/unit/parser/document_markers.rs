@@ -14,22 +14,20 @@
 
 use forgo_lib_yaml::{Doc, Error, Node};
 
+/// Indented `---`/`...` are plain scalars (markers only count at column 0),
+/// so these inputs fail because of what follows them, not as markers.
 fn assert_block_err(s: &str) {
     match Doc::from_str(s) {
         Ok(doc) => {
             panic!(
-                "expected parse error containing \"document marker not allowed inside block\", \
-                 but parsing succeeded.\n\nEmitted:\n{}",
+                "expected a parse error, but parsing succeeded.\n\nEmitted:\n{}",
                 doc.to_string().unwrap_or_else(|_| "<emit error>".into())
             );
         }
-        Err(Error::Parse(msg)) => {
-            assert!(
-                msg.contains("document marker not allowed inside block"),
-                "expected parse error to contain it, got: {msg:?}"
-            );
+        Err(Error::Syntax { msg, .. }) => {
+            assert!(!msg.is_empty());
         }
-        Err(e) => panic!("expected Error::Parse, got: {e:?}"),
+        Err(e) => panic!("expected a syntax error, got: {e:?}"),
     }
 }
 
@@ -42,21 +40,15 @@ fn indented_doc_markers_with_comments_should_error() {
 
 #[test]
 fn indented_marker_like_junk_is_not_a_marker() {
-    // TEMP: dump tokens for a specific repro
-    eprintln!(
-        "{}",
-        forgo_lib_yaml::debug_token_dump("a:\n  ----\n  c: 2\n")
-    );
-
     // '----' or '...x' should be treated as plain scalars, not markers.
-    let d = Doc::from_str("a:\n  ----\n  c: 2\n").expect("parse");
+    let d = Doc::from_str("a:\n  ----\nc: 2\n").expect("parse");
     let Node::Map(m) = d.root().node() else {
         panic!("root not map");
     };
     assert_eq!(m.len(), 2);
     assert_eq!(m[0].0, "a");
     assert_eq!(m[0].1.node().as_str(), Some("----"));
-    let d2 = Doc::from_str("a:\n  ...x\n  c: 2\n").expect("parse");
+    let d2 = Doc::from_str("a:\n  ...x\nc: 2\n").expect("parse");
     let Node::Map(m2) = d2.root().node() else {
         panic!("root not map");
     };
@@ -66,8 +58,16 @@ fn indented_marker_like_junk_is_not_a_marker() {
 }
 
 #[test]
-fn nested_doc_marker_under_nested_block_errors() {
-    assert_block_err("a:\n  b:\n    ---\n");
+fn nested_indented_marker_is_a_plain_scalar() {
+    // `---` only marks a document at column 0; indented, it is a scalar.
+    let d = Doc::from_str("a:\n  b:\n    ---\n").expect("parse");
+    let Node::Map(m) = d.root().node() else {
+        panic!("root not map");
+    };
+    let Node::Map(inner) = m[0].1.node() else {
+        panic!("a not map");
+    };
+    assert_eq!(inner[0].1.node().as_str(), Some("---"));
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn top_level_markers_allow_comments_and_multiple_docs() {
 
 #[test]
 fn indented_four_hyphens_is_scalar() {
-    let d = Doc::from_str("a:\n  ----\n  c: 2\n").unwrap();
+    let d = Doc::from_str("a:\n  ----\nc: 2\n").unwrap();
     let Node::Map(m) = d.root().node() else {
         panic!()
     };
@@ -101,13 +101,9 @@ fn indented_four_hyphens_is_scalar() {
 
 #[test]
 fn indented_standalone_doc_marker_errors() {
-    assert!(
-        Doc::from_str("a:\n  ---\n  c: 2\n")
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("document marker not allowed inside block")
-    );
+    // The indented `---` is a scalar value, and `c: 2` then continues it as
+    // a multi-line implicit key, which is an error.
+    assert!(Doc::from_str("a:\n  ---\n  c: 2\n").is_err());
 }
 
 #[test]

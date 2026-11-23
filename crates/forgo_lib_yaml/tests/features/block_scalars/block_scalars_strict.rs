@@ -21,78 +21,57 @@ use forgo_lib_yaml::Doc;
 
 #[test]
 fn literal_with_indent_indicator_removes_exact_k_spaces() {
-    // Indicator |2 means: only admit lines with indent >= 2, then dedent by 2
-    let s2 = "|2\n  a\n    b\n c\n    d\n";
-    let d = Doc::from_str(s2).unwrap();
+    // |2: content lines are indented exactly 2 spaces; extra spaces are content.
+    let d = Doc::from_str("|2\n  a\n    b\n\n    d\n").unwrap();
+    assert_eq!(d.root().node().as_str(), Some("a\n  b\n\n  d\n"));
     let out = d.to_string().unwrap();
+    assert!(out.contains("|\n  a\n    b\n\n    d\n"), "got: {out:?}");
 
-    // Line " c" has indent 1 < 2, so it's not admitted (becomes empty line in sequence)
-    // Expected body: "a\n  b\n  d\n"
-    // Emitted with 2-space indent: "|\n  a\n    b\n  \n    d\n"
-    // Check for the body content with emission indentation
-    assert!(
-        out.contains("  a\n    b\n  \n    d\n"),
-        "Expected properly indented block scalar body, got: {:?}",
-        out
-    );
+    // A less indented non-empty line ends the scalar; " c" is then extra
+    // content after the document's node, which is an error.
+    assert!(Doc::from_str("|2\n  a\n    b\n c\n    d\n").is_err());
 }
 
 #[test]
 fn literal_without_indicator_uses_min_indent_of_non_empty_lines() {
-    // No indicator: dedent by the minimum indent among non-empty lines (here 1).
+    // No indicator: the first non-empty line sets the indentation (here 1).
     let s = "|\n a\n  b\n\n  c\n";
     let d = Doc::from_str(s).unwrap();
+    assert_eq!(d.root().node().as_str(), Some("a\n b\n\n c\n"));
     let out = d.to_string().unwrap();
-
-    // After min-indent (1) removal: "a\n b\n\n c\n"
-    // Emitted with 2-space indent: "|\n  a\n   b\n  \n   c\n"
-    assert!(
-        out.contains("  a\n   b\n  \n   c\n"),
-        "Expected properly indented block scalar body, got: {:?}",
-        out
-    );
+    assert!(out.contains("|\n  a\n   b\n\n   c\n"), "got: {out:?}");
 }
 
 #[test]
 fn folded_preserves_paragraphs_and_more_indented_runs() {
-    // Fold single newlines to space; preserve blank lines; preserve more-indented runs
+    // Fold single newlines to space; preserve blank lines and more-indented runs.
     let s = ">\nfoo\nbar\n\n baz\n  qux\nbaz\n";
     let d = Doc::from_str(s).unwrap();
-    let out = d.to_string().unwrap();
-
-    // Body after folding: "foo bar\n\n baz\n  qux\nbaz\n"
-    // Emitted with 2-space indent: "|\n  foo bar\n  \n   baz\n    qux\n  baz\n"
-    assert!(
-        out.contains("  foo bar\n  \n   baz\n    qux\n  baz\n"),
-        "Expected folded output with preserved structure, got: {:?}",
-        out
+    assert_eq!(
+        d.root().node().as_str(),
+        Some("foo bar\n\n baz\n  qux\nbaz\n")
     );
+    let out = d.to_string().unwrap();
+    // Folded style survives, and re-parsing gives the same value.
+    assert!(out.starts_with(">\n"), "got: {out:?}");
+    let d2 = Doc::from_str(&out).unwrap();
+    assert_eq!(d2.root().node().as_str(), d.root().node().as_str());
 }
 
 #[test]
 fn chomping_minus_strips_all_trailing_newlines() {
     let d = Doc::from_str("|-\n  a\n  \n  b\n\n").unwrap();
+    assert_eq!(d.root().node().as_str(), Some("a\n\nb"));
     let out = d.to_string().unwrap();
-    // Body with chomp -: "a\n\nb" (no trailing newline)
-    // Emitted: "|-\n  a\n  \n  b\n"
-    assert!(
-        out.contains("  a\n  \n  b\n"),
-        "Expected chomped body, got: {:?}",
-        out
-    );
+    assert!(out.contains("|-\n  a\n\n  b\n"), "got: {out:?}");
 }
 
 #[test]
 fn chomping_plus_keeps_all_trailing_newlines() {
     let d = Doc::from_str("|+\n  a\n\n").unwrap();
+    assert_eq!(d.root().node().as_str(), Some("a\n\n"));
     let out = d.to_string().unwrap();
-    // Body with chomp +: "a\n\n" (keeps trailing newlines)
-    // Emitted: "|+\n  a\n  \n"
-    assert!(
-        out.contains("  a\n  \n"),
-        "Expected body with trailing newlines, got: {:?}",
-        out
-    );
+    assert!(out.contains("|+\n  a\n\n"), "got: {out:?}");
 }
 
 #[test]
@@ -138,21 +117,12 @@ fn indicator_order_is_free_mixture() {
 
 #[test]
 fn content_lines_must_meet_required_indent_when_indicator_present() {
-    // Indicator |3 means: only admit lines with indent >= 3
-    let s = "|3\n  a\n   b\n    c\n d\n";
-    let d = Doc::from_str(s).unwrap();
-    let out = d.to_string().unwrap();
-    // Lines: "  a" (indent 2 < 3) -> not admitted
-    //        "   b" (indent 3) -> "b" (rel 0)
-    //        "    c" (indent 4) -> " c" (rel 1)
-    //        " d" (indent 1 < 3) -> not admitted
-    // Body: "b\n c\n"
-    // Emitted with 2-space indent: "|3\n  b\n   c\n"
-    assert!(
-        out.contains("  b\n   c\n"),
-        "Expected only properly indented lines, got: {:?}",
-        out
-    );
+    // |3: "  a" has only 2 spaces, so the scalar is empty and "a" is extra
+    // content after the document's node.
+    assert!(Doc::from_str("|3\n  a\n   b\n    c\n d\n").is_err());
+    // Correctly indented: lines keep their spaces beyond column 3.
+    let d = Doc::from_str("|3\n   b\n    c\n").unwrap();
+    assert_eq!(d.root().node().as_str(), Some("b\n c\n"));
 }
 
 #[test]

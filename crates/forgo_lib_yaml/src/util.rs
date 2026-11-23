@@ -118,36 +118,3 @@ pub fn is_number_like(text: &str) -> bool {
     }
     i == bytes.len()
 }
-
-/// Count leading spaces.
-pub fn leading_spaces(s: &str) -> usize {
-    s.chars().take_while(|c| *c == ' ').count()
-}
-
-/// Any character that can appear in a plain (unquoted) scalar run.
-/// We exclude whitespace and YAML indicator/delimiter characters that
-/// we already lex as their own tokens, as well as forbidden control characters.
-pub fn is_plain_scalar_char(c: char) -> bool {
-    // whitespace or line breaks end the plain token
-    if matches!(c, ' ' | '\t' | '\n' | '\r') {
-        return false;
-    }
-    // characters that have dedicated tokens in our lexer:
-    // Note: '-' is allowed in plain scalars (e.g., "not-date", "2002-04-28")
-    // The lexer handles '- ' (dash-space) as a special list indicator token
-    // Note: '\'' and '"' are allowed in plain scalars per YAML 1.2.2 §7.3.3
-    // The lexer will match them as starting quoted strings at value-start positions (before plain scalar check)
-    // but within a plain scalar that's already started, they're literal characters
-    if matches!(
-        c,
-        ':' | '[' | ']' | '{' | '}' | ',' | '|' | '>' | '+' | '&' | '*' | '#'
-    ) {
-        return false;
-    }
-    // Forbidden control characters per YAML 1.2.2 Section 5.8
-    if crate::char_validator::is_forbidden_control_char(c) {
-        return false;
-    }
-    // everything else, including all Unicode letters/digits/marks/punctuation, is fine.
-    true
-}

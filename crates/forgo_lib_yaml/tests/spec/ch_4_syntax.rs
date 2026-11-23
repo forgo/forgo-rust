@@ -38,13 +38,7 @@ fn ch_4_1_01_character_range() {
 #[test]
 fn ch_4_1_02_concatenation() {
     // Concatenation of terms (implicit in all YAML)
-    Fixture::new(
-        "4.1",
-        2,
-        "Concatenation of characters",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("4.1", 2, "Concatenation of characters", "key: value\n").run();
 }
 
 #[test]
@@ -92,13 +86,7 @@ fn ch_4_2_02_zero_or_more() {
 #[test]
 fn ch_4_2_03_one_or_more() {
     // term+ means one or more occurrences
-    Fixture::new(
-        "4.2",
-        3,
-        "At least one sequence item",
-        "- item1\n- item2\n",
-    )
-    .run();
+    Fixture::new("4.2", 3, "At least one sequence item", "- item1\n- item2\n").run();
 }
 
 #[test]
@@ -132,25 +120,13 @@ fn ch_4_3_01_start_of_line() {
 #[test]
 fn ch_4_3_02_end_of_input() {
     // <end-of-input> matches at stream end
-    Fixture::new(
-        "4.3",
-        2,
-        "Valid document ending",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("4.3", 2, "Valid document ending", "key: value\n").run();
 }
 
 #[test]
 fn ch_4_3_03_empty_production() {
     // <empty> matches without consuming input
-    Fixture::new(
-        "4.3",
-        3,
-        "Empty value (null)",
-        "key:\n",
-    )
-    .run();
+    Fixture::new("4.3", 3, "Empty value (null)", "key:\n").run();
 }
 
 // ============================================================================
@@ -188,13 +164,7 @@ fn ch_4_4_02_lookbehind() {
 #[test]
 fn ch_4_5_01_indentation_zero() {
     // Indentation parameter n=0
-    Fixture::new(
-        "4.5",
-        1,
-        "Zero indentation (top level)",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("4.5", 1, "Zero indentation (top level)", "key: value\n").run();
 }
 
 #[test]
@@ -204,21 +174,20 @@ fn ch_4_5_02_indentation_positive() {
         "4.5",
         2,
         "Positive indentation (nested)",
-        "parent:\n  child: value\n    grandchild: data\n",
+        "parent:\n  child:\n    grandchild: data\n",
     )
     .run();
+    // A more indented key after a scalar value continues that scalar and
+    // then meets `:`, which is an error (official cases EW3V, U44R).
+    assert!(
+        forgo_lib_yaml::Doc::from_str("parent:\n  child: value\n    grandchild: data\n").is_err()
+    );
 }
 
 #[test]
 fn ch_4_5_03_indentation_minus_one() {
     // Indentation parameter n=-1 (flow context)
-    Fixture::new(
-        "4.5",
-        3,
-        "Flow context indentation",
-        "flow: {key: value}\n",
-    )
-    .run();
+    Fixture::new("4.5", 3, "Flow context indentation", "flow: {key: value}\n").run();
 }
 
 #[test]
@@ -252,37 +221,19 @@ fn ch_4_6_01_block_in_context() {
 #[test]
 fn ch_4_6_02_block_out_context() {
     // BLOCK-OUT: block outer context
-    Fixture::new(
-        "4.6",
-        2,
-        "Block-out context (top level)",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("4.6", 2, "Block-out context (top level)", "key: value\n").run();
 }
 
 #[test]
 fn ch_4_6_03_block_key_context() {
     // BLOCK-KEY: implicit block key context
-    Fixture::new(
-        "4.6",
-        3,
-        "Block-key context (mapping key)",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("4.6", 3, "Block-key context (mapping key)", "key: value\n").run();
 }
 
 #[test]
 fn ch_4_6_04_flow_in_context() {
     // FLOW-IN: flow collection entry context
-    Fixture::new(
-        "4.6",
-        4,
-        "Flow-in context (flow sequence)",
-        "[a, b, c]\n",
-    )
-    .run();
+    Fixture::new("4.6", 4, "Flow-in context (flow sequence)", "[a, b, c]\n").run();
 }
 
 #[test]
@@ -340,13 +291,7 @@ fn ch_4_6_08_nested_contexts() {
 #[test]
 fn ch_4_7_01_parenthesization() {
     // Parentheses group productions
-    Fixture::new(
-        "4.7",
-        1,
-        "Grouped production (parentheses)",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("4.7", 1, "Grouped production (parentheses)", "key: value\n").run();
 }
 
 #[test]
@@ -364,13 +309,7 @@ fn ch_4_7_02_quantification_precedence() {
 #[test]
 fn ch_4_7_03_concatenation_precedence() {
     // Concatenation binds tighter than alternation
-    Fixture::new(
-        "4.7",
-        3,
-        "Concatenation before alternation",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("4.7", 3, "Concatenation before alternation", "key: value\n").run();
 }
 
 #[test]
@@ -497,7 +436,10 @@ fn ch_4_9_02_inconsistent_indentation_error() {
     // 3-space indent after 2-space is inconsistent
     // Some parsers may be lenient, strict ones should error
     if result.is_err() {
-        assert!(result.is_err(), "Inconsistent indentation should be rejected");
+        assert!(
+            result.is_err(),
+            "Inconsistent indentation should be rejected"
+        );
     }
 }
 
@@ -756,13 +698,7 @@ fn ch_4_11_07_empty_productions_sequence() {
 #[test]
 fn ch_4_12_01_optional_at_boundary() {
     // Optional term at various boundaries
-    Fixture::new(
-        "4.12",
-        1,
-        "Optional term at start",
-        "key: value\n",
-    )
-    .run();
+    Fixture::new("4.12", 1, "Optional term at start", "key: value\n").run();
 }
 
 #[test]
@@ -825,7 +761,7 @@ fn ch_4_13_03_combining_characters() {
         "4.13",
         3,
         "Unicode combining characters",
-        "combined: e\u{0301}\n",  // e with acute accent as combining
+        "combined: e\u{0301}\n", // e with acute accent as combining
     )
     .run();
 }

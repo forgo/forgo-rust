@@ -61,6 +61,7 @@ fn empty_scalar<'a>(mark: Mark) -> Ev<'a> {
             tag: None,
             value: Cow::Borrowed(""),
             style: ScalarStyle::Plain,
+            block: None,
         },
         Span::new(mark, mark),
     )
@@ -433,7 +434,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Scalar(..) => {
                 let t = self.skip()?;
-                let TokenKind::Scalar(value, style) = t.kind else {
+                let TokenKind::Scalar(value, style, block) = t.kind else {
                     unreachable!()
                 };
                 self.state = self.pop_state();
@@ -443,6 +444,7 @@ impl<'a> Parser<'a> {
                         tag,
                         value,
                         style,
+                        block,
                     },
                     Span::new(start, t.end),
                 ))
@@ -499,6 +501,7 @@ impl<'a> Parser<'a> {
                         tag,
                         value: Cow::Borrowed(""),
                         style: ScalarStyle::Plain,
+                        block: None,
                     },
                     Span::new(start, end),
                 ))

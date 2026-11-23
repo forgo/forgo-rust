@@ -127,13 +127,13 @@ fn typed_scalars_in_map() {
 fn assert_parse_err(input: &str, needle: &str) {
     match Doc::from_str(input) {
         Ok(_) => panic!("expected parse error containing {needle:?}, but parsing succeeded"),
-        Err(Error::Parse(msg)) => {
+        Err(Error::Syntax { msg, .. }) | Err(Error::Parse(msg)) => {
             assert!(
                 msg.contains(needle),
                 "expected parse error to contain {needle:?}, got: {msg:?}"
             );
         }
-        Err(e) => panic!("expected Error::Parse, got: {e:?}"),
+        Err(e) => panic!("expected a syntax error, got: {e:?}"),
     }
 }
 
@@ -142,7 +142,10 @@ fn accept_yaml_version_1_1() {
     // Per YAML spec Example 6.14, we should accept YAML 1.1/1.3 and attempt to parse
     let s = "%YAML 1.1\n---\na: 1\n";
     let result = Doc::from_str(s);
-    assert!(result.is_ok(), "Should accept YAML 1.1 and parse with 1.2 rules");
+    assert!(
+        result.is_ok(),
+        "Should accept YAML 1.1 and parse with 1.2 rules"
+    );
 }
 
 #[test]
@@ -150,7 +153,10 @@ fn accept_yaml_version_1_3() {
     // Per YAML spec Example 6.14, we should accept YAML 1.3 and attempt to parse
     let s = "%YAML 1.3\n---\na: 1\n";
     let result = Doc::from_str(s);
-    assert!(result.is_ok(), "Should accept YAML 1.3 and parse with 1.2 rules");
+    assert!(
+        result.is_ok(),
+        "Should accept YAML 1.3 and parse with 1.2 rules"
+    );
 }
 
 #[test]
@@ -162,7 +168,7 @@ fn error_on_directive_after_docstart() {
 a: 1
 ";
     // Your suggested message: "directives (%YAML/%TAG) must appear before document start '---'"
-    assert_parse_err(s, "directives");
+    assert_parse_err(s, "directive");
 }
 
 #[test]
@@ -218,22 +224,14 @@ a:
         println!("--- TOKEN DUMP ---\n{toks}");
     }
 
-    // If parsing unexpectedly succeeds, print what the parser built/emitted.
+    // An indented `---` is a plain scalar, not a document marker; here it
+    // is an implicit key without `:`, which is an error.
     match forgo_lib_yaml::Doc::from_str(s) {
         Ok(doc) => {
             let emitted = doc.to_string().unwrap_or_else(|_| "<emit error>".into());
-            panic!(
-                "expected parse error containing \"document marker not allowed inside block\", \
-                 but parsing succeeded.\n\nEmitted:\n{emitted}\n"
-            );
+            panic!("expected a parse error, but parsing succeeded.\n\nEmitted:\n{emitted}\n");
         }
-        Err(forgo_lib_yaml::Error::Parse(msg)) => {
-            assert!(
-                msg.contains("document marker not allowed inside block"),
-                "expected parse error to contain \"document marker not allowed inside block\", got: {msg:?}"
-            );
-        }
-        Err(e) => panic!("expected Error::Parse, got: {e:?}"),
+        Err(e) => assert!(e.to_string().starts_with("Parse error at 3:3"), "{e}"),
     }
 }
 
@@ -282,17 +280,16 @@ key: val
 }
 
 fn dump_tokens(input: &str) -> String {
-    use forgo_lib_yaml::{Lexer, Tok}; // <— from crate root, not ::lexer
-    let mut lx = Lexer::new(input);
+    use forgo_lib_yaml::syntax::test_event::to_test_event;
     let mut s = String::new();
-    let mut i = 0usize;
-    loop {
-        let t = lx.next_token();
-        s.push_str(&format!("{:02}: {:?}\n", i, t));
-        if matches!(t, Tok::Eof) {
-            break;
+    for (i, r) in forgo_lib_yaml::events(input).enumerate() {
+        match r {
+            Ok((ev, _)) => s.push_str(&format!("{i:02}: {}\n", to_test_event(&ev))),
+            Err(e) => {
+                s.push_str(&format!("{i:02}: {e}\n"));
+                break;
+            }
         }
-        i += 1;
     }
     s
 }

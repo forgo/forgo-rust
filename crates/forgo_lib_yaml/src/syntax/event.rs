@@ -36,6 +36,26 @@ pub enum ScalarStyle {
     Folded,
 }
 
+/// The chomping indicator of a block scalar header.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Chomping {
+    /// `-`: drop the final line break and trailing empty lines.
+    Strip,
+    /// No indicator: keep the final line break only.
+    #[default]
+    Clip,
+    /// `+`: keep the final line break and trailing empty lines.
+    Keep,
+}
+
+/// The indicators written in a literal or folded block scalar header.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct BlockHeader {
+    pub chomping: Chomping,
+    /// The explicit indentation indicator (1-9), if written.
+    pub indent: Option<u8>,
+}
+
 /// A node tag as written in the source, plus its resolved form.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tag<'a> {
@@ -98,6 +118,8 @@ pub enum Event<'a> {
         tag: Option<Tag<'a>>,
         value: Cow<'a, str>,
         style: ScalarStyle,
+        /// Header indicators of a literal or folded scalar.
+        block: Option<BlockHeader>,
     },
     Alias {
         name: Cow<'a, str>,
@@ -141,11 +163,13 @@ impl Event<'_> {
                 tag,
                 value,
                 style,
+                block,
             } => Event::Scalar {
                 anchor: anchor.map(own),
                 tag: tag.map(Tag::into_owned),
                 value: own(value),
                 style,
+                block,
             },
             Event::Alias { name } => Event::Alias { name: own(name) },
         }
