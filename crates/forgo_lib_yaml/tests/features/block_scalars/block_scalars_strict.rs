@@ -24,7 +24,7 @@ fn literal_with_indent_indicator_removes_exact_k_spaces() {
     // |2: content lines are indented exactly 2 spaces; extra spaces are content.
     let d = Doc::from_str("|2\n  a\n    b\n\n    d\n").unwrap();
     assert_eq!(d.root().node().as_str(), Some("a\n  b\n\n  d\n"));
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     // The recorded indentation indicator is kept.
     assert!(out.contains("|2\n  a\n    b\n\n    d\n"), "got: {out:?}");
 
@@ -39,7 +39,7 @@ fn literal_without_indicator_uses_min_indent_of_non_empty_lines() {
     let s = "|\n a\n  b\n\n  c\n";
     let d = Doc::from_str(s).unwrap();
     assert_eq!(d.root().node().as_str(), Some("a\n b\n\n c\n"));
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     assert!(out.contains("|\n  a\n   b\n\n   c\n"), "got: {out:?}");
 }
 
@@ -52,7 +52,7 @@ fn folded_preserves_paragraphs_and_more_indented_runs() {
         d.root().node().as_str(),
         Some("foo bar\n\n baz\n  qux\nbaz\n")
     );
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     // Folded style survives, and re-parsing gives the same value.
     assert!(out.starts_with(">\n"), "got: {out:?}");
     let d2 = Doc::from_str(&out).unwrap();
@@ -63,7 +63,7 @@ fn folded_preserves_paragraphs_and_more_indented_runs() {
 fn chomping_minus_strips_all_trailing_newlines() {
     let d = Doc::from_str("|-\n  a\n  \n  b\n\n").unwrap();
     assert_eq!(d.root().node().as_str(), Some("a\n\nb"));
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     assert!(out.contains("|-\n  a\n\n  b\n"), "got: {out:?}");
 }
 
@@ -71,14 +71,14 @@ fn chomping_minus_strips_all_trailing_newlines() {
 fn chomping_plus_keeps_all_trailing_newlines() {
     let d = Doc::from_str("|+\n  a\n\n").unwrap();
     assert_eq!(d.root().node().as_str(), Some("a\n\n"));
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     assert!(out.contains("|+\n  a\n\n"), "got: {out:?}");
 }
 
 #[test]
 fn chomping_clip_default_keeps_exactly_one_trailing_newline() {
     let d = Doc::from_str("|\n  a\n\n").unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     // Body with default chomp: "a\n" (one trailing newline)
     // Emitted: "|\n  a\n"
     assert!(
@@ -104,7 +104,7 @@ fn indicator_order_is_free_mixture() {
 
     for s in [s1, s2, s3, s4] {
         let d = Doc::from_str(s).unwrap();
-        let out = d.to_string().unwrap();
+        let out = crate::common::render(&d);
         // All should parse and emit valid bodies
         if s.starts_with('|') {
             // Literal: "a\nb" emitted as "  a\n  b"
@@ -129,7 +129,7 @@ fn content_lines_must_meet_required_indent_when_indicator_present() {
 #[test]
 fn folded_single_newline_becomes_single_space_no_double_spaces() {
     let d = Doc::from_str(">\nfoo\nbar\n").unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     // Body: "foo bar\n"
     // Emitted: ">\n  foo bar\n"
     assert!(

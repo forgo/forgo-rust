@@ -44,7 +44,7 @@ fn synth_doc(mut r: Rng) -> String {
         s.push_str(r.pick(&items));
     }
     s.push_str("]\n");
-    if r.next_u32() % 2 == 0 {
+    if r.next_u32().is_multiple_of(2) {
         s.push_str("list:\n");
         let m = 1 + (r.next_u32() % 4);
         for _ in 0..m {

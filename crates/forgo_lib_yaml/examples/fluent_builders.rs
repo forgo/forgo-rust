@@ -86,13 +86,14 @@ fn main() {
     ));
 
     // Build server settings sub-map
-    let mut server_settings: Vec<(MapKey, Elem)> = vec![];
-    server_settings.push((MapKey::from_str("host"), Elem::string("0.0.0.0")));
-    server_settings.push((MapKey::from_str("port"), Elem::number(8080)));
-    server_settings.push((
-        MapKey::from_str("workers"),
-        Elem::number(4).with_comment("Number of worker threads"),
-    ));
+    let server_settings: Vec<(MapKey, Elem)> = vec![
+        (MapKey::from_str("host"), Elem::string("0.0.0.0")),
+        (MapKey::from_str("port"), Elem::number(8080)),
+        (
+            MapKey::from_str("workers"),
+            Elem::number(4).with_comment("Number of worker threads"),
+        ),
+    ];
 
     server_config.push((
         MapKey::from_str("server"),
@@ -115,15 +116,16 @@ fn main() {
     ));
 
     // Build database configuration
-    let mut db_config: Vec<(MapKey, Elem)> = vec![];
-    db_config.push((MapKey::from_str("driver"), Elem::string("postgresql")));
-    db_config.push((MapKey::from_str("host"), Elem::string("localhost")));
-    db_config.push((MapKey::from_str("port"), Elem::number(5432)));
-    db_config.push((MapKey::from_str("database"), Elem::string("production_db")));
-    db_config.push((
-        MapKey::from_str("pool_size"),
-        Elem::number(10).with_comment("Connection pool size"),
-    ));
+    let db_config: Vec<(MapKey, Elem)> = vec![
+        (MapKey::from_str("driver"), Elem::string("postgresql")),
+        (MapKey::from_str("host"), Elem::string("localhost")),
+        (MapKey::from_str("port"), Elem::number(5432)),
+        (MapKey::from_str("database"), Elem::string("production_db")),
+        (
+            MapKey::from_str("pool_size"),
+            Elem::number(10).with_comment("Connection pool size"),
+        ),
+    ];
 
     server_config.push((
         MapKey::from_str("database"),

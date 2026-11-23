@@ -261,7 +261,7 @@ fn ch_9_3_01_empty_document_in_stream() {
     let input = "---\n---\nkey: value\n";
     let docs = Doc::from_stream(input).unwrap();
     // Should parse, though behavior of empty document may vary
-    assert!(docs.len() >= 1);
+    assert!(!docs.is_empty());
 }
 
 #[test]

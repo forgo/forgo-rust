@@ -185,14 +185,14 @@ level1:
     });
 
     // 2. Vec<&str> (useful when path is dynamic)
-    let path_segments = vec!["level1", "level2", "value"];
+    let path_segments = ["level1", "level2", "value"];
     doc.visit_values_mut(&path_segments[..], |elem| {
         *elem = Elem::string("modified again");
         true
     });
 
     // 3. Vec<&str> owned (when you build the path dynamically)
-    let dynamic_path = vec!["level1", "level2", "value"];
+    let dynamic_path = ["level1", "level2", "value"];
     doc.visit_values_mut(&dynamic_path[..], |elem| {
         *elem = Elem::string("final value");
         true
@@ -232,13 +232,13 @@ services:
     // Update all myapp images to v2.0.0
     let mut updated_count = 0;
     doc.visit_values_mut(&["services", "*", "image"], |elem| {
-        if let Some(image) = elem.node().as_str() {
-            if image.starts_with("myapp/") {
-                let new_image = image.replace("v1.0.0", "v2.0.0");
-                *elem = Elem::string(new_image).with_comment("Updated to v2.0.0");
-                updated_count += 1;
-                return true;
-            }
+        if let Some(image) = elem.node().as_str()
+            && image.starts_with("myapp/")
+        {
+            let new_image = image.replace("v1.0.0", "v2.0.0");
+            *elem = Elem::string(new_image).with_comment("Updated to v2.0.0");
+            updated_count += 1;
+            return true;
         }
         false
     });
@@ -291,10 +291,10 @@ environments:
         if !is_dev {
             // Find and update replicas
             for (key, value) in env_map.iter_mut() {
-                if key == "replicas" {
-                    if let Some(current) = value.node().as_i64() {
-                        *value = Elem::number(current * 2).with_comment("Scaled up 2x");
-                    }
+                if key == "replicas"
+                    && let Some(current) = value.node().as_i64()
+                {
+                    *value = Elem::number(current * 2).with_comment("Scaled up 2x");
                 }
             }
             return true;

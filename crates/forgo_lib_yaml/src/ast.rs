@@ -2,6 +2,7 @@
 use std::fmt;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::emitter::Emitter;
 pub use crate::syntax::{BlockHeader, Chomping};
@@ -241,6 +242,31 @@ impl SourceSpan {
 }
 
 impl PartialEq for SourceSpan {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+/// Where a parsed document came from: the source text, the document's
+/// byte range in it, and its document-level fields as parsed. Writing a
+/// document back copies the source text of everything that didn't change
+/// (see `preserve`). Ignored by `==`.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Origin {
+    /// The whole source stream (shared by its documents).
+    pub(crate) source: Option<Arc<str>>,
+    /// This document's byte range in `source`.
+    pub(crate) range: (usize, usize),
+    /// A mutable borrow of the tree was handed out, so it may differ from
+    /// the source.
+    pub(crate) touched: bool,
+    pub(crate) yaml_version: Option<(u8, u8)>,
+    pub(crate) tag_handles: Vec<(String, String)>,
+    pub(crate) explicit_start: bool,
+    pub(crate) explicit_end: bool,
+}
+
+impl PartialEq for Origin {
     fn eq(&self, _: &Self) -> bool {
         true
     }
@@ -734,6 +760,8 @@ pub struct Doc {
     pub(crate) footer_comments: Vec<String>,
     /// The source stream had no document at all (only comments or nothing).
     pub(crate) no_content: bool,
+    /// The source text, for format-preserving output (ignored by `==`).
+    pub(crate) origin: Origin,
 }
 
 /// Error type (no deps).
@@ -802,7 +830,20 @@ impl Doc {
         explicit_start: bool,
         explicit_end: bool,
         footer_comments: Vec<String>,
+        source: Option<(Arc<str>, (usize, usize))>,
     ) -> Self {
+        let origin = match source {
+            Some((source, range)) => Origin {
+                source: Some(source),
+                range,
+                touched: false,
+                yaml_version,
+                tag_handles: tag_handles.clone(),
+                explicit_start,
+                explicit_end,
+            },
+            None => Origin::default(),
+        };
         Doc {
             root,
             had_leading_blank,
@@ -813,23 +854,82 @@ impl Doc {
             explicit_end,
             footer_comments,
             no_content: false,
+            origin,
         }
     }
 
     /// A document for a stream that holds no document, keeping its comments.
-    pub(crate) fn empty_with_comments(comments: Vec<String>) -> Self {
+    pub(crate) fn empty_with_comments(
+        comments: Vec<String>,
+        saw_carriage_return: bool,
+        source: Option<(Arc<str>, (usize, usize))>,
+    ) -> Self {
         let mut d = Doc::from_parts(
             Elem::new(Node::Scalar(Scalar::Null)),
+            false,
+            saw_carriage_return,
+            None,
+            Vec::new(),
+            false,
+            false,
+            comments,
+            source,
+        );
+        d.no_content = true;
+        d
+    }
+
+    /// A document with `root` and no directives or markers, for building
+    /// YAML in code.
+    ///
+    /// ```
+    /// use forgo_lib_yaml::{Doc, Elem, MapKey};
+    ///
+    /// let mut root = Elem::map();
+    /// root.node_mut()
+    ///     .as_map_mut()
+    ///     .unwrap()
+    ///     .push((MapKey::from("name"), Elem::string("demo")));
+    /// assert_eq!(Doc::new(root).to_string()?, "name: demo\n");
+    /// # Ok::<(), forgo_lib_yaml::Error>(())
+    /// ```
+    pub fn new(root: Elem) -> Self {
+        Doc::from_parts(
+            root,
             false,
             false,
             None,
             Vec::new(),
             false,
             false,
-            comments,
-        );
-        d.no_content = true;
-        d
+            Vec::new(),
+            None,
+        )
+    }
+
+    /// This document stands in for a stream that has no documents, only
+    /// comments (or nothing): it keeps those comments, as footer comments,
+    /// so writing it back preserves them. Its root is null. It stops
+    /// being a placeholder once its root is set.
+    ///
+    /// ```
+    /// use forgo_lib_yaml::Doc;
+    ///
+    /// let docs = Doc::from_stream("# nothing here yet\n")?;
+    /// assert!(docs[0].is_placeholder());
+    /// assert_eq!(Doc::to_stream_string(&docs)?, "# nothing here yet\n");
+    /// # Ok::<(), forgo_lib_yaml::Error>(())
+    /// ```
+    pub fn is_placeholder(&self) -> bool {
+        self.no_content && self.root == Elem::new(Node::Scalar(Scalar::Null))
+    }
+
+    /// Forget the source layout: from now on [`Doc::to_string`] writes the
+    /// whole document in the standard layout (two-space indentation,
+    /// single spaces, no blank lines) instead of keeping the source text
+    /// of unchanged parts. Comments, styles and markers are still kept.
+    pub fn reformat(&mut self) {
+        self.origin = Origin::default();
     }
 
     /// Comments after the document's last node.
@@ -838,15 +938,17 @@ impl Doc {
     }
 
     /// Parse the first document of a YAML stream. The whole stream must be
-    /// valid. A stream without documents yields an empty document (null
-    /// root) that keeps the stream's comments.
+    /// valid. A stream without documents gives a
+    /// [placeholder](Doc::is_placeholder) that keeps its comments.
     // Public API; `str::parse::<Doc>()` works through the `FromStr` impl below.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(input: &str) -> Result<Self, Error> {
         crate::compose::compose_first(input, &crate::ParseOptions::default())
     }
 
-    /// Parse every document of a YAML stream.
+    /// Parse every document of a YAML stream. A stream with no documents
+    /// (only comments, or `...`) gives one [placeholder](Doc::is_placeholder)
+    /// that keeps its text; empty input gives no documents.
     pub fn from_stream(input: &str) -> Result<Vec<Self>, Error> {
         crate::compose::compose_stream(input)
     }
@@ -908,10 +1010,24 @@ impl Doc {
         Self::from_str(&text)
     }
 
-    /// Emit the document. Directives, `---` and `...` are written when the
-    /// document had them (or needs them), and CRLF line breaks are used
-    /// when the source used CR line breaks.
+    /// Write the document as YAML.
+    ///
+    /// A parsed document keeps its source text: untouched, it is written
+    /// back byte for byte, and after edits only the changed entries are
+    /// rewritten (see [`Doc::reformat`] to rewrite everything). Documents
+    /// built in code, and parts that changed, use the emitter's layout:
+    /// directives, `---` and `...` when the document has them, and CRLF
+    /// line breaks when the source used them.
     pub fn to_string(&self) -> Result<String, Error> {
+        self.check_emit_depth()?;
+        if let Some(text) = crate::preserve::doc_text(self) {
+            return Ok(text);
+        }
+        self.render()
+    }
+
+    /// The document in the emitter's layout, ignoring its source text.
+    pub(crate) fn render(&self) -> Result<String, Error> {
         let mut out = String::new();
         // If the first thing we'll emit is a comment, don't add the preserved
         // leading blank line: the comment should come first.
@@ -925,7 +1041,7 @@ impl Doc {
                     .is_some_and(|e| !e.meta.leading_comments.is_empty()),
                 _ => false,
             };
-        if self.had_leading_blank && !begins_with_comment && !self.no_content {
+        if self.had_leading_blank && !begins_with_comment && !self.is_placeholder() {
             out.push('\n');
         }
         self.emit_one_into(&mut out, false)?;
@@ -953,8 +1069,8 @@ impl Doc {
     }
 
     fn emit_body_with(&self, out: &mut String, header_written: bool) -> Result<(), Error> {
-        if !self.no_content {
-            Emitter::emit_root(
+        if !self.is_placeholder() {
+            Emitter::default().emit_root(
                 &self.root,
                 !self.footer_comments.is_empty(),
                 header_written,
@@ -975,12 +1091,25 @@ impl Doc {
         Ok(())
     }
 
-    /// Emit a full stream.
+    /// Write a stream of documents, separated by `---` (and `...` where
+    /// directives need it). Parsed documents keep their source text as in
+    /// [`Doc::to_string`].
     pub fn to_stream_string(docs: &[Self]) -> Result<String, Error> {
+        for d in docs {
+            d.check_emit_depth()?;
+        }
+        if let Some(text) = crate::preserve::stream_text(docs) {
+            return Ok(text);
+        }
+        Self::render_stream(docs)
+    }
+
+    /// A stream in the emitter's layout, ignoring source text.
+    pub(crate) fn render_stream(docs: &[Self]) -> Result<String, Error> {
         let mut out = String::new();
         if let Some(first) = docs.first()
             && first.had_leading_blank
-            && !first.no_content
+            && !first.is_placeholder()
         {
             out.push('\n');
         }
@@ -1000,7 +1129,6 @@ impl Doc {
     }
 
     fn emit_one_into(&self, out: &mut String, needs_start: bool) -> Result<(), Error> {
-        self.check_emit_depth()?;
         // Directives must precede `---`; after another document they also
         // need that document to end with `...`.
         let has_directives = self.yaml_version.is_some() || !self.tag_handles.is_empty();
@@ -1013,7 +1141,7 @@ impl Doc {
             out.push_str("---");
             // A block root's properties and trailing comment (or an empty
             // root's trailing comment) go on the `---` line.
-            if !self.no_content
+            if !self.is_placeholder()
                 && let Some(h) = crate::emitter::root_header(&self.root)
             {
                 out.push(' ');
@@ -1026,7 +1154,7 @@ impl Doc {
                 return Ok(());
             }
             // Keep a scalar or flow root on the `---` line, as written.
-            let inline = !self.no_content
+            let inline = !self.is_placeholder()
                 && self.root.meta.leading_comments.is_empty()
                 && match &self.root.node {
                     Node::Scalar(_) | Node::Alias(_) => true,
@@ -1064,6 +1192,7 @@ impl Doc {
         P: IntoPath,
         F: FnMut(&mut Vec<Elem>) -> bool,
     {
+        self.origin.touched = true;
         let path = path.into_path();
         fn go<F>(elem: &mut Elem, path: &[Seg], f: &mut F) -> bool
         where
@@ -1111,6 +1240,7 @@ impl Doc {
         P: IntoPath,
         F: FnMut(&mut Vec<(MapKey, Elem)>) -> bool,
     {
+        self.origin.touched = true;
         let path = path.into_path();
         fn go<F>(node: &mut Elem, path: &[Seg], hit: &mut bool, f: &mut F)
         where
@@ -1151,6 +1281,7 @@ impl Doc {
         P: IntoPath,
         F: FnMut(&mut Elem) -> bool,
     {
+        self.origin.touched = true;
         let path = path.into_path();
         fn go<F>(node: &mut Elem, path: &[Seg], hit: &mut bool, f: &mut F)
         where
@@ -1231,6 +1362,7 @@ impl Doc {
 
     /// Mutably borrow the root element.
     pub fn root_mut(&mut self) -> &mut Elem {
+        self.origin.touched = true;
         &mut self.root
     }
 }

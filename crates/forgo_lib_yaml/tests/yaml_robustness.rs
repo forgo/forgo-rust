@@ -88,6 +88,17 @@ fn check(input: &str) -> Option<String> {
         Err(e) if e.to_string().contains("alias") => return None,
         Err(e) => return Some(format!("events accepted but composing failed: {e}")),
     };
+    // Untouched documents write back as their source, byte for byte.
+    match forgo_lib_yaml::Doc::to_stream_string(&docs) {
+        Ok(s) if s == input => {}
+        Ok(s) => return Some(format!("source not kept: wrote {s:?}")),
+        Err(e) => return Some(format!("emit failed: {e}")),
+    }
+    // The emitter itself: rewrite everything.
+    let mut docs = docs;
+    for d in &mut docs {
+        d.reformat();
+    }
     let emitted = match forgo_lib_yaml::Doc::to_stream_string(&docs) {
         Ok(s) => s,
         Err(e) => return Some(format!("emit failed: {e}")),
@@ -99,6 +110,12 @@ fn check(input: &str) -> Option<String> {
     if normalize::normalized_events(input) != normalize::normalized_events(&emitted) {
         return Some(format!("round trip changed content; emitted {emitted:?}"));
     }
+    // A placeholder without comments (whitespace-only input) carries nothing.
+    let bare = |d: &forgo_lib_yaml::Doc| d.is_placeholder() && d.footer_comments().is_empty();
+    let (docs, again): (Vec<_>, Vec<_>) = (
+        docs.into_iter().filter(|d| !bare(d)).collect(),
+        again.into_iter().filter(|d| !bare(d)).collect(),
+    );
     if again != docs {
         PRESENTATION_DIFFS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if !SHOW_PRESENTATION {

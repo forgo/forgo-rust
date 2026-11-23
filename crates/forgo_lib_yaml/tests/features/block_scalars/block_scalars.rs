@@ -23,7 +23,7 @@ fn indent_indicator_and_folding() {
     let s = "|2\n  a\n  b\n\n  c\n";
 
     let d = Doc::from_str(s).unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
 
     // The parsed body is "a\nb\n\nc\n"; empty lines are emitted without indentation.
     assert_eq!(d.root().node().as_str(), Some("a\nb\n\nc\n"));
@@ -37,7 +37,7 @@ fn indent_indicator_and_folding() {
     // Lines fold to space except when blank or more-indented
     let s2 = ">\n foo\n bar\n\n  baz\n";
     let d2 = Doc::from_str(s2).unwrap();
-    let out2 = d2.to_string().unwrap();
+    let out2 = crate::common::render(&d2);
 
     // For folded scalars: "foo\nbar" folds to "foo bar", blank line preserved,
     // " baz" (with extra leading space) is preserved as more-indented

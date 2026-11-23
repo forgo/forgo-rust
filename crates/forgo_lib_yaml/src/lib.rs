@@ -7,6 +7,7 @@ mod compose;
 mod editor;
 mod emitter;
 mod emitter_helpers;
+mod preserve;
 mod schema;
 pub mod syntax;
 mod util;

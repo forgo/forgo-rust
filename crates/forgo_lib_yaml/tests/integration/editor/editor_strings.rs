@@ -23,12 +23,13 @@ list: [true, 2, "x", null, true]
     .unwrap();
 
     let path: &[Seg] = &["list".into()];
-    d.visit_sequences_mut(path, |seq| normalize_string_list(seq));
+    d.visit_sequences_mut(path, normalize_string_list);
     let out = d.to_string().unwrap();
 
-    // Everything becomes a string, sorted and deduped; the flow style stays.
-    // Strings that would read back as other types are quoted.
-    assert!(out.contains(r#"list: ["2", "null", "true", x]"#), "{out}");
+    // Everything becomes a string, sorted and deduped; the flow style and
+    // the quotes as written stay. Strings that would read back as other
+    // types are quoted.
+    assert!(out.contains(r#"list: ["2", "null", "true", "x"]"#), "{out}");
     let back = Doc::from_str(&out).unwrap();
     let items: Vec<_> = back.root().node().as_map().unwrap()[0]
         .1
@@ -48,7 +49,7 @@ list: [true, 2, "x", null, true]
 fn normalize_handles_exponents_negatives_and_prefixes() {
     let mut d = Doc::from_str(r#"list: ["01", -3, 1.0e3, "5", x]"#).unwrap();
     let path: &[Seg] = &["list".into()];
-    d.visit_sequences_mut(path, |seq| normalize_string_list(seq));
+    d.visit_sequences_mut(path, normalize_string_list);
     let out = d.to_string().unwrap();
     // All strings now; ones that look like numbers must be quoted.
     for quoted in ["01", "-3", "5"] {

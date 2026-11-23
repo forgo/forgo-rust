@@ -15,12 +15,10 @@
 //! these tests validate implementation-specific behavior like trailing space
 //! handling, chomping semantics, and edge cases.
 
-use forgo_lib_yaml;
-
 fn show(s: &str) -> String {
     // Make whitespace/newlines visible so we can see trailing spaces, etc.
     let mut out = String::new();
-    for (_, ch) in s.chars().enumerate() {
+    for ch in s.chars() {
         match ch {
             '\n' => out.push_str("\\n\n"),
             '\t' => out.push_str("\\t"),
@@ -45,7 +43,7 @@ fn show(s: &str) -> String {
 fn literal_block_pipe_preserves_newlines_default_one_final() {
     let input = "msg: |\n  line 1\n  line 2\n";
     let d = forgo_lib_yaml::Doc::from_str(input).unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
 
     if !out.contains("msg: |") {
         panic!("expected header not found\n{}", show(&out));
@@ -62,7 +60,7 @@ fn literal_block_pipe_preserves_newlines_default_one_final() {
 fn literal_block_chomp_strip() {
     let input = "m: |-\n  a\n";
     let d = forgo_lib_yaml::Doc::from_str(input).unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
 
     if !out.contains("m: |") {
         panic!("expected 'm: |' header not found\n{}", show(&out));
@@ -78,7 +76,7 @@ fn folded_block_gt_folds_single_newlines() {
     let d = forgo_lib_yaml::Doc::from_str(input).unwrap();
     let v = &d.root().node().as_map().unwrap()[0].1;
     assert_eq!(v.node().as_str(), Some("this is one paragraph\n"));
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     // The folded style survives emission.
     if !out.contains("wrap: >\n  this is one paragraph\n") {
         panic!("expected folded '>' to be preserved\n{}", show(&out));
@@ -91,7 +89,7 @@ fn block_body_trailing_spaces_are_content() {
     // keeps the literal style and the exact value.
     let input = "msg: |\n  line 1  \n  line 2\t \n";
     let d = forgo_lib_yaml::Doc::from_str(input).unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     if !out.contains("msg: |\n") {
         panic!("expected literal style\n{}", show(&out));
     }
@@ -111,7 +109,7 @@ fn new_multiline_values_with_trailing_spaces_are_quoted() {
         *e = forgo_lib_yaml::Elem::string("line 1  \nline 2\n");
         true
     });
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     for (i, l) in out.lines().enumerate() {
         if l.ends_with(' ') || l.ends_with('\t') {
             panic!("line {} ends with trailing whitespace\n{}", i, show(&out));

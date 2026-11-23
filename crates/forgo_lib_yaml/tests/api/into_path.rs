@@ -92,7 +92,7 @@ fn test_path_from_slice() {
 #[test]
 fn test_path_from_vec() {
     let mut doc = sample_jobs_doc();
-    let path = vec!["jobs", "build", "steps"];
+    let path = ["jobs", "build", "steps"];
 
     let modified = doc.visit_sequences_mut(&path[..], |steps| {
         steps.push(str_elem("from vec"));
@@ -298,7 +298,7 @@ fn test_all_path_syntaxes_equivalent() {
 
     // 2. Slice from vec
     let mut doc2 = sample_doc();
-    let path = vec!["version"];
+    let path = ["version"];
     doc2.visit_values_mut(&path[..], |elem| {
         *elem = Elem::string("2.0");
         true

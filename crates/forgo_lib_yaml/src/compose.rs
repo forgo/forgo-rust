@@ -8,7 +8,11 @@
 //!   completed before it on its line (in `[a, b] # c`, the sequence); one
 //!   that follows only an indicator (`key:` or `-` with the value on a later
 //!   line) goes to that value;
-//! - comments after a document's last node go to the document footer.
+//! - comments after a document's last node (and one on its `...` line) go
+//!   to the document footer.
+//!
+//! Each document records its byte range in the stream, and a block
+//! collection's span ends at its last token, for format-preserving output.
 //!
 //! Keys that are plain or quoted strings without properties become
 //! `MapKey::Str`; any other key (numbers, booleans, null, tagged or
@@ -20,19 +24,45 @@ use crate::schema;
 use crate::syntax::{self, Comment, Event, Mark, ScalarStyle, Span, Tag};
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::sync::Arc;
 
-/// Compose every document in `input`.
+/// Compose every document in `input`. A non-empty stream without documents
+/// gives one placeholder document that keeps its text and comments.
 pub(crate) fn compose_stream(input: &str) -> Result<Vec<Doc>, Error> {
     compose_stream_with(input, &crate::ParseOptions::default())
 }
 
-/// Compose every document in `input` with explicit limits.
+/// [`compose_stream`] with explicit limits.
 pub(crate) fn compose_stream_with(
     input: &str,
     options: &crate::ParseOptions,
 ) -> Result<Vec<Doc>, Error> {
+    let mut docs = compose(input, options, true)?;
+    if input.is_empty() {
+        docs.clear();
+    }
+    Ok(docs)
+}
+
+/// Compose the first document, or a placeholder (null root, keeping the
+/// comments) when the stream has none.
+pub(crate) fn compose_first(input: &str, options: &crate::ParseOptions) -> Result<Doc, Error> {
+    Ok(compose(input, options, true)?.swap_remove(0))
+}
+
+/// Compose every document, keeping a copy of `input` in each when
+/// `keep_source` is set. Always returns at least one document (a
+/// placeholder for a stream without documents).
+pub(crate) fn compose(
+    input: &str,
+    options: &crate::ParseOptions,
+    keep_source: bool,
+) -> Result<Vec<Doc>, Error> {
     let mut events = syntax::events(input);
     let mut c = Composer {
+        src: input,
+        source: keep_source.then(|| Arc::from(input)),
+        doc_start: 0,
         comments: Vec::new(),
         ci: 0,
         leading: Vec::new(),
@@ -62,38 +92,39 @@ pub(crate) fn compose_stream_with(
     Ok(c.docs)
 }
 
-/// Compose the first document, or an empty one (keeping any comments) when
-/// the stream has none.
-pub(crate) fn compose_first(input: &str, options: &crate::ParseOptions) -> Result<Doc, Error> {
-    let mut docs = compose_stream_with(input, options)?;
-    if docs.is_empty() {
-        let comments = syntax_comments(input)?;
-        return Ok(Doc::empty_with_comments(comments));
+/// The position after the line break of the line holding the byte before
+/// `pos` (`pos` itself when it starts a line).
+pub(crate) fn line_end_after(src: &str, pos: usize) -> usize {
+    if pos == 0 || src.as_bytes().get(pos - 1) == Some(&b'\n') {
+        return pos;
     }
-    Ok(docs.swap_remove(0))
+    match src.as_bytes()[pos..].iter().position(|&b| b == b'\n') {
+        Some(i) => pos + i + 1,
+        None => src.len(),
+    }
 }
 
-fn syntax_comments(input: &str) -> Result<Vec<String>, Error> {
-    let mut events = syntax::events(input);
-    for r in &mut events {
-        r?;
+/// Where a node's text ends. An empty node written as nothing after `:`,
+/// `-` or `?` ends there; one standing for an omitted value (placed at the
+/// next token) has no text.
+pub(crate) fn text_end(src: &str, span: &SourceSpan) -> Option<usize> {
+    let r = span.range()?;
+    if r.end > r.start {
+        return Some(r.end);
     }
-    Ok(events
-        .comments()
-        .iter()
-        .map(|c| c.text.trim().to_string())
-        .collect())
+    let before = r.start.checked_sub(1).and_then(|i| src.as_bytes().get(i))?;
+    matches!(before, b':' | b'-' | b'?').then_some(r.end)
 }
 
-enum Frame {
-    Seq(Elem),
-    Map {
-        elem: Elem,
-        /// Leading comments of the entry being composed.
-        entry_leading: Vec<String>,
-        /// The entry's key, once complete.
-        key: Option<MapKey>,
-    },
+/// A collection being composed.
+struct Frame {
+    elem: Elem,
+    /// Mappings: leading comments of the entry being composed.
+    entry_leading: Vec<String>,
+    /// Mappings: the entry's key, once complete.
+    key: Option<MapKey>,
+    /// End of the last token inside the collection so far.
+    end: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -122,6 +153,11 @@ struct DocInfo {
 }
 
 struct Composer<'a> {
+    src: &'a str,
+    /// The input, shared by the composed documents (when kept).
+    source: Option<Arc<str>>,
+    /// Where the current document's text starts.
+    doc_start: usize,
     comments: Vec<Comment<'a>>,
     ci: usize,
     /// Full-line comments waiting for the next entry, item or root.
@@ -168,9 +204,9 @@ impl<'a> Composer<'a> {
     fn role(&self) -> Role {
         match self.stack.last() {
             None => Role::Root,
-            Some(Frame::Seq(_)) => Role::Item,
-            Some(Frame::Map { key: None, .. }) => Role::Key,
-            Some(Frame::Map { .. }) => Role::Value,
+            Some(f) if f.elem.node.is_seq() => Role::Item,
+            Some(Frame { key: None, .. }) => Role::Key,
+            Some(_) => Role::Value,
         }
     }
 
@@ -196,13 +232,13 @@ impl<'a> Composer<'a> {
         match self.role() {
             Role::Key => {
                 let l = std::mem::take(&mut self.leading);
-                if let Some(Frame::Map { entry_leading, .. }) = self.stack.last_mut() {
-                    *entry_leading = l;
+                if let Some(f) = self.stack.last_mut() {
+                    f.entry_leading = l;
                 }
             }
             Role::Value => {
-                if let Some(Frame::Map { entry_leading, .. }) = self.stack.last_mut() {
-                    meta.leading_comments = std::mem::take(entry_leading);
+                if let Some(f) = self.stack.last_mut() {
+                    meta.leading_comments = std::mem::take(&mut f.entry_leading);
                 }
                 // A nested collection leaves later comments to its first child.
                 if !collection {
@@ -231,10 +267,11 @@ impl<'a> Composer<'a> {
     fn last_meta_mut(&mut self) -> Option<&mut Meta> {
         match self.stack.last_mut() {
             None => self.root.as_mut().map(|e| &mut e.meta),
-            Some(Frame::Seq(seq)) => seq.node.as_seq_mut()?.last_mut().map(|e| &mut e.meta),
-            Some(Frame::Map { elem, .. }) => {
-                elem.node.as_map_mut()?.last_mut().map(|(_, v)| &mut v.meta)
-            }
+            Some(f) => match &mut f.elem.node {
+                Node::Seq(items) => items.last_mut().map(|e| &mut e.meta),
+                Node::Map(entries) => entries.last_mut().map(|(_, v)| &mut v.meta),
+                _ => None,
+            },
         }
     }
 
@@ -285,21 +322,20 @@ impl<'a> Composer<'a> {
     }
 
     fn complete(&mut self, elem: Elem) {
-        match self.stack.last_mut() {
-            None => self.root = Some(elem),
-            Some(Frame::Seq(seq)) => {
-                if let Node::Seq(items) = &mut seq.node {
-                    items.push(elem);
-                }
-            }
-            Some(Frame::Map { elem: map, key, .. }) => match key.take() {
-                Some(k) => {
-                    if let Node::Map(entries) = &mut map.node {
-                        entries.push((k, elem));
-                    }
-                }
-                None => *key = Some(make_key(elem)),
+        let Some(f) = self.stack.last_mut() else {
+            self.root = Some(elem);
+            return;
+        };
+        if let Some(end) = text_end(self.src, &elem.meta.span) {
+            f.end = f.end.max(end);
+        }
+        match &mut f.elem.node {
+            Node::Seq(items) => items.push(elem),
+            Node::Map(entries) => match f.key.take() {
+                Some(k) => entries.push((k, elem)),
+                None => f.key = Some(make_key(elem)),
             },
+            _ => {}
         }
     }
 
@@ -339,8 +375,18 @@ impl<'a> Composer<'a> {
                     .into_iter()
                     .chain(self.carry.take())
                     .collect();
-                if let Some(d) = self.docs.last_mut() {
-                    d.footer_comments.extend(rest);
+                let len = self.src.len();
+                match self.docs.last_mut() {
+                    Some(d) => {
+                        d.footer_comments.extend(rest);
+                        // Anything after the last document is its text.
+                        d.origin.range.1 = len;
+                    }
+                    None => {
+                        let source = self.source.clone().map(|s| (s, (0, len)));
+                        self.docs
+                            .push(Doc::empty_with_comments(rest, self.saw_cr, source));
+                    }
                 }
             }
             Event::DocumentStart {
@@ -362,10 +408,27 @@ impl<'a> Composer<'a> {
             }
             Event::DocumentEnd { explicit } => {
                 self.drain_until(span.start.index);
-                let footer: Vec<String> = std::mem::take(&mut self.leading)
+                let mut footer: Vec<String> = std::mem::take(&mut self.leading)
                     .into_iter()
                     .chain(self.carry.take())
                     .collect();
+                // The document's text runs to the next document's marker,
+                // or through the `...` line (with its comment).
+                let mut end = span.start.index;
+                if explicit {
+                    end = span.end.index;
+                    if let Some(c) = self.comments.get(self.ci)
+                        && c.trailing
+                        && c.start.line == span.end.line
+                    {
+                        footer.push(c.text.trim().to_string());
+                        self.ci += 1;
+                        end = c.start.index;
+                    }
+                    end = line_end_after(self.src, (end + 1).min(self.src.len()));
+                }
+                let range = (self.doc_start, end);
+                self.doc_start = end;
                 let info = self.doc.take().expect("document start precedes its end");
                 let root = self
                     .root
@@ -382,6 +445,7 @@ impl<'a> Composer<'a> {
                     info.explicit_start,
                     explicit,
                     footer,
+                    self.source.clone().map(|s| (s, range)),
                 ));
             }
             Event::Scalar {
@@ -458,10 +522,15 @@ impl<'a> Composer<'a> {
                 self.props(anchor, tag.as_ref(), &mut meta);
                 meta.span = SourceSpan::from_span(span);
                 meta.style = Some(if flow { Style::Flow } else { Style::Block });
-                self.stack.push(Frame::Seq(Elem {
-                    node: Node::Seq(Vec::new()),
-                    meta,
-                }));
+                self.stack.push(Frame {
+                    elem: Elem {
+                        node: Node::Seq(Vec::new()),
+                        meta,
+                    },
+                    entry_leading: Vec::new(),
+                    key: None,
+                    end: span.end.index,
+                });
             }
             Event::MappingStart { anchor, tag, flow } => {
                 self.check_depth(span)?;
@@ -470,25 +539,31 @@ impl<'a> Composer<'a> {
                 self.props(anchor, tag.as_ref(), &mut meta);
                 meta.span = SourceSpan::from_span(span);
                 meta.style = Some(if flow { Style::Flow } else { Style::Block });
-                self.stack.push(Frame::Map {
+                self.stack.push(Frame {
                     elem: Elem {
                         node: Node::Map(Vec::new()),
                         meta,
                     },
                     entry_leading: Vec::new(),
                     key: None,
+                    end: span.end.index,
                 });
             }
             Event::SequenceEnd | Event::MappingEnd => {
-                let mut elem = match self.stack.pop() {
-                    Some(Frame::Seq(e)) => e,
-                    Some(Frame::Map { elem, .. }) => elem,
-                    None => unreachable!("collection end without start"),
-                };
+                let frame = self
+                    .stack
+                    .pop()
+                    .expect("a collection end follows its start");
+                let mut elem = frame.elem;
                 // Only a flow collection's end is a real position on its
-                // line; a block collection ends where the next token starts.
+                // line; a block collection's end event sits at the next
+                // token, so it ends at its last token instead.
                 let is_flow_end = span.end.index > span.start.index;
-                elem.meta.span.set_end(span.end.index);
+                elem.meta.span.set_end(if is_flow_end {
+                    span.end.index
+                } else {
+                    frame.end
+                });
                 let was_key = self.role() == Role::Key;
                 self.complete(elem);
                 if is_flow_end {

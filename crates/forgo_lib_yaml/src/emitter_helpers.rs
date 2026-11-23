@@ -331,10 +331,11 @@ pub(crate) fn emit_block(
     folded: bool,
     header: BlockHeader,
     parent_indent: usize,
+    default_indent: usize,
     trailing_comment: Option<&str>,
     out: &mut String,
 ) {
-    let m = header.indent.map_or(2, usize::from);
+    let m = header.indent.map_or(default_indent, usize::from);
     let content_indent = parent_indent + m;
     let body = s.trim_end_matches('\n');
     let trailing = s.len() - body.len();

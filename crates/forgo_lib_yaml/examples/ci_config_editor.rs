@@ -120,7 +120,11 @@ jobs:
         io::stdout().flush().unwrap();
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        if io::stdin().read_line(&mut input).unwrap_or(0) == 0 {
+            // End of input: export and stop.
+            export_and_exit(&doc);
+            break;
+        }
 
         match input.trim() {
             "1" => upgrade_ubuntu_runners(&mut doc),
@@ -145,21 +149,21 @@ fn display_summary(doc: &forgo_lib_yaml::Doc) {
 
     if let Some(root_map) = doc.root().node().as_map() {
         // Count jobs
-        if let Some((_, jobs_elem)) = root_map.iter().find(|(k, _)| k == "jobs") {
-            if let Some(jobs_map) = jobs_elem.node().as_map() {
-                println!("  Jobs defined: {}", jobs_map.len());
-                for (job_name, _) in jobs_map {
-                    println!("    • {}", job_name);
-                }
+        if let Some((_, jobs_elem)) = root_map.iter().find(|(k, _)| k == "jobs")
+            && let Some(jobs_map) = jobs_elem.node().as_map()
+        {
+            println!("  Jobs defined: {}", jobs_map.len());
+            for (job_name, _) in jobs_map {
+                println!("    • {}", job_name);
             }
         }
 
         // Show triggers
-        if let Some((_, on_elem)) = root_map.iter().find(|(k, _)| k == "on") {
-            if let Some(on_map) = on_elem.node().as_map() {
-                let triggers: Vec<&str> = on_map.iter().filter_map(|(k, _)| k.as_str()).collect();
-                println!("  Triggers: {}", triggers.join(", "));
-            }
+        if let Some((_, on_elem)) = root_map.iter().find(|(k, _)| k == "on")
+            && let Some(on_map) = on_elem.node().as_map()
+        {
+            let triggers: Vec<&str> = on_map.iter().filter_map(|(k, _)| k.as_str()).collect();
+            println!("  Triggers: {}", triggers.join(", "));
         }
     }
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -171,12 +175,12 @@ fn upgrade_ubuntu_runners(doc: &mut forgo_lib_yaml::Doc) {
 
     let mut count = 0;
     doc.visit_values_mut(&["jobs", "*", "runs-on"], |elem| {
-        if let Some(runner) = elem.node().as_str() {
-            if runner.contains("ubuntu-20.04") {
-                *elem = Elem::string("ubuntu-22.04").with_comment("Upgraded from 20.04");
-                count += 1;
-                return true;
-            }
+        if let Some(runner) = elem.node().as_str()
+            && runner.contains("ubuntu-20.04")
+        {
+            *elem = Elem::string("ubuntu-22.04").with_comment("Upgraded from 20.04");
+            count += 1;
+            return true;
         }
         false
     });
@@ -213,15 +217,16 @@ fn add_caching_to_jobs(doc: &mut forgo_lib_yaml::Doc) {
             cache_step.push(("name".into(), Elem::string("Cache dependencies")));
             cache_step.push(("uses".into(), Elem::string("actions/cache@v3")));
 
-            let mut with_map: Vec<(MapKey, Elem)> = vec![];
-            with_map.push((
-                "path".into(),
-                Elem::string("~/.cargo\ntarget/").prefer_block(),
-            ));
-            with_map.push((
-                "key".into(),
-                Elem::string("${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"),
-            ));
+            let with_map: Vec<(MapKey, Elem)> = vec![
+                (
+                    "path".into(),
+                    Elem::string("~/.cargo\ntarget/").prefer_block(),
+                ),
+                (
+                    "key".into(),
+                    Elem::string("${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"),
+                ),
+            ];
 
             cache_step.push(("with".into(), Elem::new(Node::Map(with_map))));
 
@@ -262,7 +267,7 @@ fn update_rust_toolchain(doc: &mut forgo_lib_yaml::Doc) {
 
     let mut count = 0;
     doc.visit_values_mut(&["jobs", "*", "steps", "*", "with", "toolchain"], |elem| {
-        *elem = Elem::string(version).with_comment(&format!("Updated to {}", version));
+        *elem = Elem::string(version).with_comment(format!("Updated to {}", version));
         count += 1;
         true
     });
@@ -292,31 +297,22 @@ fn add_security_scan_job(doc: &mut forgo_lib_yaml::Doc) {
         let mut security_job: Vec<(MapKey, Elem)> = vec![];
         security_job.push(("runs-on".into(), Elem::string("ubuntu-22.04")));
 
+        let step = |name: &str, (key, value): (&str, &str)| {
+            Elem::new(Node::Map(vec![
+                ("name".into(), Elem::string(name)),
+                (key.into(), Elem::string(value)),
+            ]))
+        };
         let steps = vec![
-            {
-                let mut step: Vec<(MapKey, Elem)> = vec![];
-                step.push(("name".into(), Elem::string("Checkout code")));
-                step.push(("uses".into(), Elem::string("actions/checkout@v2")));
-                Elem::new(Node::Map(step))
-            },
-            {
-                let mut step: Vec<(MapKey, Elem)> = vec![];
-                step.push(("name".into(), Elem::string("Run cargo audit")));
-                step.push((
-                    "run".into(),
-                    Elem::string("cargo install cargo-audit && cargo audit"),
-                ));
-                Elem::new(Node::Map(step))
-            },
-            {
-                let mut step: Vec<(MapKey, Elem)> = vec![];
-                step.push(("name".into(), Elem::string("Run cargo deny")));
-                step.push((
-                    "run".into(),
-                    Elem::string("cargo install cargo-deny && cargo deny check"),
-                ));
-                Elem::new(Node::Map(step))
-            },
+            step("Checkout code", ("uses", "actions/checkout@v2")),
+            step(
+                "Run cargo audit",
+                ("run", "cargo install cargo-audit && cargo audit"),
+            ),
+            step(
+                "Run cargo deny",
+                ("run", "cargo install cargo-deny && cargo deny check"),
+            ),
         ];
 
         security_job.push(("steps".into(), Elem::new(Node::Seq(steps))));
@@ -349,12 +345,12 @@ fn update_actions_versions(doc: &mut forgo_lib_yaml::Doc) {
     for (old, new) in updates {
         let mut count = 0;
         doc.visit_values_mut(&["jobs", "*", "steps", "*", "uses"], |elem| {
-            if let Some(action) = elem.node().as_str() {
-                if action == old {
-                    *elem = Elem::string(new).with_comment(&format!("Updated from {}", old));
-                    count += 1;
-                    return true;
-                }
+            if let Some(action) = elem.node().as_str()
+                && action == old
+            {
+                *elem = Elem::string(new).with_comment(format!("Updated from {}", old));
+                count += 1;
+                return true;
             }
             false
         });

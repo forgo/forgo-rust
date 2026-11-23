@@ -8,10 +8,16 @@
 //! - `json`:   the composed documents equal `in.json` (valid cases that have one);
 //! - `coverage`: every input byte outside tokens and comments is white space
 //!   (valid cases), so the scanner can't silently drop content;
-//! - `roundtrip`: parse → emit → parse keeps the content: the normalized
-//!   event streams (types, values, tags, anchors; no styles) are equal;
-//! - `presentation`: parse → emit → parse gives an equal `Doc` (comments,
-//!   styles and spellings included; source positions ignored).
+//! - `source`: writing the parsed, untouched documents gives back the input
+//!   byte for byte (valid cases);
+//! - `roundtrip`: parse → reformat → emit → parse keeps the content: the
+//!   normalized event streams (types, values, tags, anchors; no styles) are
+//!   equal;
+//! - `presentation`: parse → reformat → emit → parse gives an equal `Doc`
+//!   (comments, styles and spellings included; source positions ignored).
+//!
+//! `roundtrip` and `presentation` test the emitter: `Doc::reformat` drops
+//! the source text, so everything is rendered.
 //!
 //! Checks listed in [`GATED`] fail this test when a failure is missing from
 //! `yaml_test_suite/known_failures.txt`, or when a listed failure passes, so
@@ -47,16 +53,18 @@ enum Check {
     Events,
     Json,
     Coverage,
+    Source,
     RoundTrip,
     Presentation,
 }
 
 impl Check {
-    const ALL: [Check; 6] = [
+    const ALL: [Check; 7] = [
         Check::Error,
         Check::Events,
         Check::Json,
         Check::Coverage,
+        Check::Source,
         Check::RoundTrip,
         Check::Presentation,
     ];
@@ -67,6 +75,7 @@ impl Check {
             Check::Events => "events",
             Check::Json => "json",
             Check::Coverage => "coverage",
+            Check::Source => "source",
             Check::RoundTrip => "roundtrip",
             Check::Presentation => "presentation",
         }
@@ -83,12 +92,13 @@ const GATED: &[Check] = &[
     Check::Events,
     Check::Json,
     Check::Coverage,
+    Check::Source,
     Check::RoundTrip,
     Check::Presentation,
 ];
 
 /// What is under test, for the report header.
-const SUBJECT: &str = "event core (`forgo_lib_yaml::events`) for error/events/coverage; legacy `Doc::from_stream` for json";
+const SUBJECT: &str = "`forgo_lib_yaml::events` for error/events/coverage; `Doc::from_stream` for json/source/roundtrip/presentation";
 
 // ---------------------------------------------------------------------------
 // Cases
@@ -174,6 +184,7 @@ struct Run {
     events: Option<Result<Vec<String>, EventsError>>,
     json: Option<Result<Vec<Json>, String>>,
     coverage: Option<Result<(), String>>,
+    source: Option<Result<(), String>>,
     roundtrip: Option<Result<(), String>>,
     presentation: Option<Result<(), String>>,
 }
@@ -190,6 +201,7 @@ fn run_subject(yaml: Vec<u8>) -> Run {
                 events: Some(Err((Vec::new(), msg.clone()))),
                 json: Some(Err(msg)),
                 coverage: None,
+                source: None,
                 roundtrip: None,
                 presentation: None,
             };
@@ -227,16 +239,31 @@ fn run_subject(yaml: Vec<u8>) -> Run {
     };
 
     let docs = forgo_lib_yaml::Doc::from_stream(&text);
-    let roundtrip = match (&docs, &accepted) {
-        (Ok(docs), Ok(())) => Some(check_roundtrip(&text, docs)),
+    let source = match (&docs, &accepted) {
+        (Ok(docs), Ok(())) => Some(check_source(&text, docs)),
         _ => None,
     };
-    let presentation = match (&docs, &accepted) {
-        (Ok(docs), Ok(())) => Some(check_presentation(docs)),
+    let reformatted = docs.as_ref().ok().map(|docs| {
+        let mut docs = docs.clone();
+        for d in &mut docs {
+            d.reformat();
+        }
+        docs
+    });
+    let roundtrip = match (&reformatted, &accepted) {
+        (Some(docs), Ok(())) => Some(check_roundtrip(&text, docs)),
+        _ => None,
+    };
+    let presentation = match (&reformatted, &accepted) {
+        (Some(docs), Ok(())) => Some(check_presentation(docs)),
         _ => None,
     };
     let json = match docs {
-        Ok(docs) => doc_json::docs_to_json(&docs),
+        // A stream without documents gives a placeholder for its comments.
+        Ok(mut docs) => {
+            docs.retain(|d| !d.is_placeholder());
+            doc_json::docs_to_json(&docs)
+        }
         Err(e) => Err(e.to_string()),
     };
 
@@ -245,6 +272,7 @@ fn run_subject(yaml: Vec<u8>) -> Run {
         events: Some(events),
         json: Some(json),
         coverage,
+        source,
         roundtrip,
         presentation,
     }
@@ -280,9 +308,15 @@ fn check_presentation(docs: &[forgo_lib_yaml::Doc]) -> Result<(), String> {
         forgo_lib_yaml::Doc::to_stream_string(docs).map_err(|e| format!("emit failed: {e}"))?;
     let again = forgo_lib_yaml::Doc::from_stream(&emitted)
         .map_err(|e| format!("emitted output doesn't parse ({e}): {emitted:?}"))?;
+    // A placeholder without comments (no documents, no comments) carries
+    // nothing, and writes nothing.
+    let bare = |d: &forgo_lib_yaml::Doc| d.is_placeholder() && d.footer_comments().is_empty();
+    let docs: Vec<_> = docs.iter().filter(|d| !bare(d)).cloned().collect();
+    let again: Vec<_> = again.into_iter().filter(|d| !bare(d)).collect();
     if again == docs {
         return Ok(());
     }
+    let docs = &docs[..];
     let a = debug_without_spans(docs);
     let b = debug_without_spans(&again);
     let refs: Vec<&str> = a.iter().map(String::as_str).collect();
@@ -290,6 +324,18 @@ fn check_presentation(docs: &[forgo_lib_yaml::Doc]) -> Result<(), String> {
         "{}; emitted {emitted:?}",
         first_difference(&refs, &b)
     ))
+}
+
+/// Untouched documents write back as their source text.
+fn check_source(text: &str, docs: &[forgo_lib_yaml::Doc]) -> Result<(), String> {
+    let written =
+        forgo_lib_yaml::Doc::to_stream_string(docs).map_err(|e| format!("emit failed: {e}"))?;
+    if written == text {
+        return Ok(());
+    }
+    let a: Vec<&str> = text.split_inclusive('\n').collect();
+    let b: Vec<String> = written.split_inclusive('\n').map(String::from).collect();
+    Err(format!("{}; wrote {written:?}", first_difference(&a, &b)))
 }
 
 /// Emit `docs` and parse the output again; the content must be unchanged.
@@ -378,7 +424,7 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 struct Results {
-    tallies: [Tally; 6],
+    tallies: [Tally; 7],
     /// Error cases where `test.event` is a prefix of our events before the error.
     error_pos_agree: usize,
     error_pos_checked: usize,
@@ -445,6 +491,16 @@ fn evaluate(cases: &[Case]) -> Results {
         if !case.error {
             let t = &mut r.tallies[Check::Coverage as usize];
             match &run.coverage {
+                None => t.not_run += 1,
+                Some(Ok(())) => t.pass.push(case.id.clone()),
+                Some(Err(e)) => t.fail.push((case.id.clone(), e.clone())),
+            }
+        }
+
+        // source
+        if !case.error {
+            let t = &mut r.tallies[Check::Source as usize];
+            match &run.source {
                 None => t.not_run += 1,
                 Some(Ok(())) => t.pass.push(case.id.clone()),
                 Some(Err(e)) => t.fail.push((case.id.clone(), e.clone())),
@@ -519,6 +575,9 @@ fn fail_all(r: &mut Results, case: &Case, detail: &str) {
     }
     if !case.error {
         r.tallies[Check::Coverage as usize]
+            .fail
+            .push((case.id.clone(), detail.to_string()));
+        r.tallies[Check::Source as usize]
             .fail
             .push((case.id.clone(), detail.to_string()));
         r.tallies[Check::RoundTrip as usize]

@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always   # readable logs
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]   # keep sorted
+        rust: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Toolchain
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+      - name: Test
+        run: |
+          cargo test --all-features
+          cargo test --doc
+      - name: Lint
+        if: matrix.rust == 'stable'
+        run: cargo clippy -- -D warnings

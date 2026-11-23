@@ -31,7 +31,7 @@ impl Rng {
     }
 
     fn gen_bool(&mut self) -> bool {
-        self.next_u32() % 2 == 0
+        self.next_u32().is_multiple_of(2)
     }
 
     fn pick_str<'a>(&mut self, items: &'a [&'a str]) -> &'a str {

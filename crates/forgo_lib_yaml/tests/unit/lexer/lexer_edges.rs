@@ -17,9 +17,12 @@ use forgo_lib_yaml::Doc;
 #[test]
 fn ignores_utf8_bom() {
     let s = "\u{FEFF}key: val\n";
-    let d = Doc::from_str(s).unwrap();
-    let out = d.to_string().unwrap();
-    assert!(out.starts_with("key: val"));
+    let mut d = Doc::from_str(s).unwrap();
+    // The source is kept as written, BOM included.
+    assert_eq!(d.to_string().unwrap(), s);
+    // Rendered, the BOM is gone.
+    d.reformat();
+    assert_eq!(d.to_string().unwrap(), "key: val\n");
 }
 
 #[test]
@@ -42,9 +45,10 @@ fn handles_crlf_as_newline() {
 #[test]
 fn handles_bare_cr_as_newline() {
     let s = "x: 1\ry: 2\r";
-    let d = Doc::from_str(s).unwrap();
+    let mut d = Doc::from_str(s).unwrap();
     assert_eq!(d.root().node().as_map().unwrap().len(), 2);
-    // CR line breaks are written back as CRLF.
-    let out = d.to_string().unwrap();
-    assert_eq!(out, "x: 1\r\ny: 2\r\n");
+    // Kept as written; rendered, CR line breaks become CRLF.
+    assert_eq!(d.to_string().unwrap(), s);
+    d.reformat();
+    assert_eq!(d.to_string().unwrap(), "x: 1\r\ny: 2\r\n");
 }

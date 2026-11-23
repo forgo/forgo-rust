@@ -75,75 +75,73 @@ database:
     // The Node type provides convenient as_* methods for type conversion
     if let Some(map) = root.node().as_map() {
         // Find and extract string value
-        if let Some((_, name_elem)) = map.iter().find(|(k, _)| k == "name") {
-            if let Some(name) = name_elem.node().as_str() {
-                println!("Application name: {}", name);
-            }
+        if let Some((_, name_elem)) = map.iter().find(|(k, _)| k == "name")
+            && let Some(name) = name_elem.node().as_str()
+        {
+            println!("Application name: {}", name);
         }
 
         // Find and extract number value
         // Numbers can be extracted as i64, u64, or f64
-        if let Some((_, version_elem)) = map.iter().find(|(k, _)| k == "version") {
-            if let Some(version) = version_elem.node().as_str() {
-                println!("Version: {}", version);
-            }
+        if let Some((_, version_elem)) = map.iter().find(|(k, _)| k == "version")
+            && let Some(version) = version_elem.node().as_str()
+        {
+            println!("Version: {}", version);
         }
 
         // Find and extract boolean value
-        if let Some((_, enabled_elem)) = map.iter().find(|(k, _)| k == "enabled") {
-            if let Some(enabled) = enabled_elem.node().as_bool() {
-                println!("Enabled: {}", enabled);
-            }
+        if let Some((_, enabled_elem)) = map.iter().find(|(k, _)| k == "enabled")
+            && let Some(enabled) = enabled_elem.node().as_bool()
+        {
+            println!("Enabled: {}", enabled);
         }
 
         // Navigate into nested structures
-        if let Some((_, deps_elem)) = map.iter().find(|(k, _)| k == "dependencies") {
-            if let Some(deps) = deps_elem.node().as_seq() {
-                println!("\nDependencies ({} total):", deps.len());
-                for (i, dep) in deps.iter().enumerate() {
-                    if let Some(dep_name) = dep.node().as_str() {
-                        println!("  {}. {}", i + 1, dep_name);
-                    }
+        if let Some((_, deps_elem)) = map.iter().find(|(k, _)| k == "dependencies")
+            && let Some(deps) = deps_elem.node().as_seq()
+        {
+            println!("\nDependencies ({} total):", deps.len());
+            for (i, dep) in deps.iter().enumerate() {
+                if let Some(dep_name) = dep.node().as_str() {
+                    println!("  {}. {}", i + 1, dep_name);
                 }
             }
         }
 
         // Navigate nested maps
-        if let Some((_, db_elem)) = map.iter().find(|(k, _)| k == "database") {
-            if let Some(db_map) = db_elem.node().as_map() {
-                println!("\nDatabase configuration:");
+        if let Some((_, db_elem)) = map.iter().find(|(k, _)| k == "database")
+            && let Some(db_map) = db_elem.node().as_map()
+        {
+            println!("\nDatabase configuration:");
 
-                if let Some((_, host)) = db_map.iter().find(|(k, _)| k == "host") {
-                    if let Some(host_str) = host.node().as_str() {
-                        println!("  Host: {}", host_str);
-                    }
+            if let Some((_, host)) = db_map.iter().find(|(k, _)| k == "host")
+                && let Some(host_str) = host.node().as_str()
+            {
+                println!("  Host: {}", host_str);
+            }
+
+            if let Some((_, port)) = db_map.iter().find(|(k, _)| k == "port")
+                && let Some(port_num) = port.node().as_i64()
+            {
+                println!("  Port: {}", port_num);
+            }
+
+            // Access deeply nested values
+            if let Some((_, creds)) = db_map.iter().find(|(k, _)| k == "credentials")
+                && let Some(creds_map) = creds.node().as_map()
+            {
+                println!("  Credentials:");
+
+                if let Some((_, username)) = creds_map.iter().find(|(k, _)| k == "username")
+                    && let Some(user) = username.node().as_str()
+                {
+                    println!("    Username: {}", user);
                 }
 
-                if let Some((_, port)) = db_map.iter().find(|(k, _)| k == "port") {
-                    if let Some(port_num) = port.node().as_i64() {
-                        println!("  Port: {}", port_num);
-                    }
-                }
-
-                // Access deeply nested values
-                if let Some((_, creds)) = db_map.iter().find(|(k, _)| k == "credentials") {
-                    if let Some(creds_map) = creds.node().as_map() {
-                        println!("  Credentials:");
-
-                        if let Some((_, username)) = creds_map.iter().find(|(k, _)| k == "username")
-                        {
-                            if let Some(user) = username.node().as_str() {
-                                println!("    Username: {}", user);
-                            }
-                        }
-
-                        if let Some((_, password)) = creds_map.iter().find(|(k, _)| k == "password")
-                        {
-                            // Check for null values
-                            if password.node().is_null() {
-                                println!("    Password: <not set>");
-                            }
-                        }
+                if let Some((_, password)) = creds_map.iter().find(|(k, _)| k == "password") {
+                    // Check for null values
+                    if password.node().is_null() {
+                        println!("    Password: <not set>");
                     }
                 }
             }
@@ -187,12 +185,11 @@ type: metadata
         Ok(docs) => {
             println!("Parsed {} documents from stream:", docs.len());
             for (i, doc) in docs.iter().enumerate() {
-                if let Some(map) = doc.root().node().as_map() {
-                    if let Some((_, doc_name)) = map.iter().find(|(k, _)| k == "document") {
-                        if let Some(name) = doc_name.node().as_str() {
-                            println!("  Document {}: {}", i + 1, name);
-                        }
-                    }
+                if let Some(map) = doc.root().node().as_map()
+                    && let Some((_, doc_name)) = map.iter().find(|(k, _)| k == "document")
+                    && let Some(name) = doc_name.node().as_str()
+                {
+                    println!("  Document {}: {}", i + 1, name);
                 }
             }
         }

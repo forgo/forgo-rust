@@ -1,4 +1,3 @@
-// crates/forgo_lib_yaml/tests/common/mod.rs
 //! Common test utilities for spec-driven testing without third-party dependencies.
 
 use forgo_lib_yaml::Doc;
@@ -98,10 +97,16 @@ impl Fixture {
             panic!("Failed to parse input:\n{}\nError: {:?}", self.input, e);
         });
 
-        // Emit to string
-        let output = doc.to_string().unwrap_or_else(|e| {
-            panic!("Failed to emit document: {:?}", e);
-        });
+        // Untouched, the stream writes back as its source text.
+        let docs = Doc::from_stream(self.input).expect("the stream parses");
+        let kept = Doc::to_stream_string(&docs).expect("the stream is written");
+        assert_eq!(
+            kept, self.input,
+            "untouched documents should write back their source"
+        );
+
+        // The emitter's rendering (source layout dropped).
+        let output = render(&doc);
 
         println!("Input:\n{}", self.input);
         println!("Output:\n{}", output);
@@ -125,9 +130,7 @@ impl Fixture {
                 );
             });
 
-            let output2 = doc2.to_string().unwrap_or_else(|e| {
-                panic!("Failed to emit document on second pass: {:?}", e);
-            });
+            let output2 = render(&doc2);
 
             assert_eq!(
                 output.trim(),
@@ -143,6 +146,16 @@ impl Fixture {
             println!("✓ Round-trip stable");
         }
     }
+}
+
+/// The emitter's rendering of a document: everything rewritten in the
+/// standard layout, ignoring the source text (see `Doc::reformat`).
+#[allow(dead_code)]
+pub fn render(doc: &Doc) -> String {
+    let mut d = doc.clone();
+    d.reformat();
+    d.to_string()
+        .unwrap_or_else(|e| panic!("Failed to emit document: {e:?}"))
 }
 
 /// Load a test fixture file from disk.

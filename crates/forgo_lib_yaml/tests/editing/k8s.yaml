@@ -1,0 +1,47 @@
+# Web tier. Applied with `kubectl apply -f`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app: web        # selector label
+    tier: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: web
+        image: "nginx:1.27.2"   # pinned
+        ports:
+        - containerPort: 80
+          protocol: TCP
+
+        env:
+        - name: MODE
+          value: production
+        - name: GREETING
+          value: 'hello, world'
+        args: [--port, "80", --verbose]
+      volumes:
+      - name: config
+        configMap: {name: web-config}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+data:
+  nginx.conf: |
+    server {
+      listen 80;
+    }
+  index.html: >-
+    <h1>Hello</h1>
+# end of manifests

@@ -869,7 +869,7 @@ fn ch_5_8_5_04_valid_surrogate_pair() {
         let doc = result.unwrap();
         let output = doc.to_string().unwrap();
         // Should represent U+10000 (Linear B Syllable B008 A)
-        assert!(output.len() > 0);
+        assert!(!output.is_empty());
     } else {
         // Implementation rejects surrogate pairs
         // This is technically valid but some parsers don't support UTF-16 surrogates

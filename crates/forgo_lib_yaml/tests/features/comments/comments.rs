@@ -44,7 +44,7 @@ root: # trailing on root line ignored (root is a map)
     - b
 "#;
     let d = Doc::from_str(input).unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     show("EMITTED YAML", &out);
 
     // Leading comment survives
@@ -66,7 +66,7 @@ fn comment_block_before_scalar_top_level() {
 "abc"
 "#;
     let d = Doc::from_str(input).unwrap();
-    let s = d.to_string().unwrap();
+    let s = crate::common::render(&d);
     assert!(s.contains("# hello"));
     assert!(s.contains(r#""abc""#));
 }
@@ -78,7 +78,7 @@ fn quoted_scalar_top_level_with_inline_comment() {
 "abc" # note
 "#;
     let d = Doc::from_str(input).unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     assert!(out.starts_with("# banner"));
     assert!(out.contains(r#""abc" # note"#));
 }
@@ -89,7 +89,7 @@ fn unquoted_scalar_top_level_stays_unquoted() {
 abc
 "#;
     let d = Doc::from_str(input).unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     // Should NOT force quotes when not originally quoted
     assert!(out.trim() == "abc");
 }
@@ -101,7 +101,7 @@ fn quoted_scalar_as_seq_item_preserves_quotes() {
 - def
 "#;
     let d = Doc::from_str(input).unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     assert!(out.contains(r#"- "abc""#));
     assert!(out.contains("- def"));
 }
@@ -110,7 +110,7 @@ fn quoted_scalar_as_seq_item_preserves_quotes() {
 fn leading_and_trailing_comments_keep_plain_map_value() {
     // Comments around a value never change how the value is written.
     let d = Doc::from_str("root:\n  # before value\n  key: value # after value\n").unwrap();
-    let out = d.to_string().unwrap();
+    let out = crate::common::render(&d);
     assert!(
         out.contains("  # before value\n  key: value # after value\n"),
         "{out}"
