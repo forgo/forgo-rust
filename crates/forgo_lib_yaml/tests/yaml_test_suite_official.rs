@@ -262,19 +262,29 @@ fn extract_block_field(content: &str, field: &str) -> Option<String> {
     let mut in_block = false;
     let mut block_lines: Vec<String> = Vec::new();
     let mut base_indent = None;
+    let mut field_indent = None;
 
     for line in content.lines() {
         let trimmed = line.trim_start();
+        let line_indent = line.len() - trimmed.len();
 
         if trimmed.starts_with(&pattern) {
             in_block = true;
+            field_indent = Some(line_indent);
             continue;
         }
 
         if in_block {
-            // Check if we've moved to a new field (non-indented or different field)
-            if !line.starts_with(' ') && !line.is_empty() {
-                break;
+            // Check if we've moved to a new field at same or lesser indent
+            // This handles cases like:
+            //   yaml: |
+            //     content
+            //   tree: |   <- This should end the yaml block
+            if let Some(field_ind) = field_indent {
+                if !line.is_empty() && line_indent <= field_ind && trimmed.contains(':') {
+                    // We've hit another field at the same or lesser indent level
+                    break;
+                }
             }
 
             // Skip the | indicator line

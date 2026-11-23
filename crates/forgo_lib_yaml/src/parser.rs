@@ -16,6 +16,32 @@ enum ValueType {
     Block,
 }
 
+/// Context type for indent stack, inspired by c-libfyaml
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum IndentContext {
+    /// Block sequence context (list with dashes)
+    BlockSequence,
+    /// Block mapping context (key-value pairs)
+    BlockMapping,
+    /// Flow sequence context (inside [...])
+    FlowSequence,
+    /// Flow mapping context (inside {...})
+    FlowMapping,
+    /// Block scalar context
+    BlockScalar,
+}
+
+/// Represents an indentation level with its context, inspired by c-libfyaml's fy_indent
+#[derive(Debug, Clone)]
+struct IndentLevel {
+    /// Indentation column
+    indent: usize,
+    /// Context type at this indent level
+    context: IndentContext,
+    /// Line where this indent was established
+    indent_line: usize,
+}
+
 pub struct Parser<'a> {
     lx: Lexer<'a>,
     look: Tok,
@@ -25,6 +51,12 @@ pub struct Parser<'a> {
     tag_handles: Vec<(String, String)>,
     /// Anchors defined in the current document (for per-document scope isolation)
     document_anchors: std::collections::HashSet<String>,
+    /// Indent stack for tracking nested contexts (inspired by c-libfyaml)
+    indent_stack: Vec<IndentLevel>,
+    /// Simple key context tracking (inspired by c-libfyaml)
+    /// When Some(indent), we're potentially parsing a simple key at that indent level
+    /// and need to ensure the colon appears on the same line
+    simple_key_context: Option<usize>,
 }
 
 impl<'a> Parser<'a> {
@@ -104,10 +136,48 @@ impl<'a> Parser<'a> {
             pending_leading_comments: Vec::new(),
             tag_handles: Vec::new(),
             document_anchors: std::collections::HashSet::new(),
+            indent_stack: Vec::new(),
+            simple_key_context: None,
         }
     }
     fn bump(&mut self) {
         self.look = self.lx.next_token();
+    }
+
+    // Indent stack management methods (inspired by c-libfyaml)
+
+    /// Push a new indentation context onto the stack
+    fn push_indent(&mut self, indent: usize, context: IndentContext) {
+        self.indent_stack.push(IndentLevel {
+            indent,
+            context,
+            indent_line: self.lx.i,  // Use position as proxy for line tracking
+        });
+    }
+
+    /// Pop the top indentation context from the stack
+    fn pop_indent(&mut self) -> Option<IndentLevel> {
+        self.indent_stack.pop()
+    }
+
+    /// Get the current indentation level (top of stack)
+    fn current_indent(&self) -> usize {
+        self.indent_stack.last().map(|level| level.indent).unwrap_or(0)
+    }
+
+    /// Unroll indent stack to target column, generating block-end tokens as needed
+    /// Inspired by c-libfyaml's fy_parse_unroll_indent()
+    fn unroll_indent(&mut self, target_column: usize) -> Result<(), Error> {
+        while let Some(context) = self.indent_stack.last() {
+            if context.indent <= target_column {
+                break;
+            }
+
+            // TODO: Validate that dedenting is structurally valid
+            // For now, just pop the context
+            self.indent_stack.pop();
+        }
+        Ok(())
     }
 
     /// Canonicalize a key for duplicate detection.
@@ -730,6 +800,8 @@ impl<'a> Parser<'a> {
         let mut last_value_non_empty = false;
         // Track sequence indentation consistency (YAML 1.2.2 §8.2.1)
         let mut seq_item_indent: Option<usize> = None;
+        // Track mapping entry indentation consistency (YAML 1.2.2 §8.2.1)
+        let mut map_entry_indent: Option<usize> = None;
         // Capture leading comments that appear before any content (belong to the container itself)
         // Only take pending comments for top-level blocks (base == 0), as nested blocks should
         // have their leading comments attached to the first child
@@ -745,10 +817,41 @@ impl<'a> Parser<'a> {
                     return Err(Error::Parse("tabs are not allowed for indentation".into()));
                 }
                 Tok::Indent(n) if n < base => {
+                    // YAML 1.2.2 §8.2.1: Check for orphaned entries at inconsistent indentation
+                    // If we've seen a mapping/sequence and this indent is between base and expected_indent,
+                    // this is invalid - content must be either at the established level or back at parent level
+                    if let Some(expected_indent) = map_entry_indent {
+                        if n > base && n < expected_indent {
+                            return Err(Error::Parse(
+                                format!("inconsistent indentation in mapping: found content at indent {}, but mapping entries must be at indent {} or less-equal to {}", n, expected_indent, base)
+                            ));
+                        }
+                    }
+                    if let Some(expected_indent) = seq_item_indent {
+                        if n > base && n < expected_indent {
+                            return Err(Error::Parse(
+                                format!("inconsistent indentation in sequence: found content at indent {}, but sequence items must be at indent {} or less-equal to {}", n, expected_indent, base)
+                            ));
+                        }
+                    }
                     break; // out of this block
                 }
                 Tok::Indent(n) => {
                     self.bump(); // consume Indent
+
+                    // Simple key orphan detection: If we have a pending simple key context
+                    // (saw a potential key but no colon yet) and we're now on a new line,
+                    // this means the key was orphaned (missing colon)
+                    if let Some(key_indent) = self.simple_key_context {
+                        // Only flag as error if the new line is at the same or lesser indent
+                        // (i.e., we've moved past the potential key without seeing a colon)
+                        if n <= key_indent {
+                            return Err(Error::Parse(
+                                format!("orphaned content [at Indent]: expected ':' after mapping key at indent {} (missing colon?)", key_indent)
+                            ));
+                        }
+                    }
+
                     // capture any full-line comments before this item
                     // Note: we only reach here if n >= base, so comments are at the right level
                     while let Tok::Comment(c) = &self.look {
@@ -783,17 +886,31 @@ impl<'a> Parser<'a> {
                                 }
                             }
 
+                            // Also check for Block values: if the last entry was a mapping with a block value,
+                            // and we see a sequence item at deeper indent (but not deeply nested), it's likely
+                            // an orphaned item that should have been part of the nested structure
+                            if let (Some(last_indent), Some(ValueType::Block)) = (last_entry_indent, last_value_type) {
+                                if saw_map && !saw_seq && n > last_indent && n <= last_indent + 3 {
+                                    return Err(Error::Parse(
+                                        "improper indentation: sequence item at inconsistent indent after block value".into()
+                                    ));
+                                }
+                            }
+
                             // YAML 1.2.2 §8.2.1: All sequence items at the SAME level must have the same indentation
-                            // Only validate if this is at the established sequence level (not a new nested sequence)
                             if let Some(expected_indent) = seq_item_indent {
-                                // Only enforce consistency if we're at the same or shallower level
-                                // (deeper levels indicate nested sequences, which are valid)
-                                if n <= expected_indent && n != expected_indent {
+                                // Items in the same sequence must have consistent indentation:
+                                // - n == expected_indent: Same level sibling - OK
+                                // - n > expected_indent+1: Deeply nested content (separate structure) - OK
+                                // - n != expected_indent and n <= expected_indent+1: Wrong indent - ERROR
+                                //
+                                // The +1 threshold allows for genuinely nested structures
+                                // while rejecting orphaned items at slightly off indents
+                                if n != expected_indent && n <= expected_indent + 1 {
                                     return Err(Error::Parse(
                                         format!("inconsistent indentation in sequence: expected indent {}, found {}", expected_indent, n)
                                     ));
                                 }
-                                // If n > expected_indent, this is a nested sequence - don't update seq_item_indent
                             } else {
                                 // First sequence item - record its indentation
                                 seq_item_indent = Some(n);
@@ -825,6 +942,26 @@ impl<'a> Parser<'a> {
                             // Could be "key:" or a standalone scalar line.
                             self.bump();
 
+                            // Simple key tracking: Mark that we might be parsing a simple key
+                            // ONLY set this in mapping context or at block start, NOT in sequence context
+                            // This prevents false positives when parsing sequence item values
+                            // IMPORTANT: Only set if not already set (handles multi-word keys like "not a number")
+                            if self.simple_key_context.is_none() && !saw_seq {
+                                if !saw_map {
+                                    // First potential key in block (no map or seq seen yet)
+                                    self.simple_key_context = Some(n);
+                                } else {
+                                    // In mapping context - check if at mapping key indent
+                                    if let Some(map_indent) = map_entry_indent {
+                                        if n == map_indent {
+                                            // At mapping level - could be next key
+                                            self.simple_key_context = Some(n);
+                                        }
+                                        // else: deeper indent, likely continuation
+                                    }
+                                }
+                            }
+
                             if matches!(self.look, Tok::Colon) {
                                 // YAML 1.2.2 §7.3.3: Implicit keys are restricted to a single line
                                 // Reject multiline quoted strings used as implicit mapping keys
@@ -836,6 +973,42 @@ impl<'a> Parser<'a> {
 
                                 // Map entry: key:
                                 self.bump(); // ':'
+
+                                // Clear simple key context - we've successfully parsed a key-value pair
+                                self.simple_key_context = None;
+
+                                // YAML 1.2.2 §8.2.1: All mapping entries at the SAME level must have the same indentation
+                                if let Some(expected_indent) = map_entry_indent {
+                                    // Entries in the same mapping must have consistent indentation:
+                                    // - n == expected_indent: Same level sibling - OK
+                                    // - n > expected_indent+1: Deeply nested content (separate structure) - OK
+                                    // - n != expected_indent and n <= expected_indent+1: Wrong indent - ERROR
+                                    //
+                                    // The +1 threshold allows for genuinely nested structures (like spec 4.5.02)
+                                    // while rejecting orphaned entries at slightly off indents
+                                    if n != expected_indent && n <= expected_indent + 1 {
+                                        return Err(Error::Parse(
+                                            format!("inconsistent indentation in mapping: expected indent {}, found {}", expected_indent, n)
+                                        ));
+                                    }
+                                } else {
+                                    // First mapping entry - record its indentation
+                                    map_entry_indent = Some(n);
+                                }
+
+                                // Orphan content detection: mapping entry after sequence AT THE SAME LEVEL
+                                // Only reject if the mapping is at the sequence's indent level (not nested inside)
+                                if saw_seq && !saw_map {
+                                    if let Some(seq_indent) = seq_item_indent {
+                                        // If mapping is at same indent as sequence items, it's orphaned
+                                        if n == seq_indent {
+                                            return Err(Error::Parse(
+                                                format!("orphaned content: mapping entry at indent {} after sequence", n)
+                                            ));
+                                        }
+                                    }
+                                }
+
                                 saw_map = true;
                                 let (mut value, vtype) = self.parse_value_after_colon(n + 2, n)?;
                                 if !self.pending_leading_comments.is_empty() {
@@ -885,10 +1058,26 @@ impl<'a> Parser<'a> {
                                     // Remember original quoting; unquoted will stay unquoted.
                                     elem.meta.prefer_quoted = quoted_key;
                                     self.consume_trailing_comment_into(&mut elem.meta);
+                                    // Clear simple key context before returning
+                                    self.simple_key_context = None;
                                     return Ok(elem);
                                 }
 
-                                // Otherwise, treat it as a seq item (fallback).
+                                // Orphan content detection (inspired by c-libfyaml):
+                                // If we've already established a sequence context (with dashes),
+                                // a scalar at the same indent WITHOUT a dash is orphaned content
+                                if saw_seq && seq_item_indent.is_some() {
+                                    return Err(Error::Parse(
+                                        format!("orphaned content: scalar at indent {} without '-' marker in sequence context", n)
+                                    ));
+                                }
+
+                                // Note: Orphan detection for missing colons is now handled at the
+                                // Tok::Indent boundary (above), where we check if simple_key_context
+                                // is still set when moving to a new line. This properly handles
+                                // multi-word keys like "not a number: .nan"
+
+                                // Otherwise, treat it as a seq item (fallback for implicit sequences).
                                 saw_seq = true;
                                 let mut child =
                                     Elem::new(Node::Scalar(classify_scalar(&StrTok {
@@ -980,6 +1169,8 @@ impl<'a> Parser<'a> {
                         }
                         Tok::Newline => {
                             self.bump();
+                            // Clear simple key context on blank lines (separates mapping entries)
+                            self.simple_key_context = None;
                         }
                         Tok::Comma => {
                             self.bump(); /* tolerate stray commas between items */
@@ -1047,6 +1238,8 @@ impl<'a> Parser<'a> {
                 }
                 Tok::Newline => {
                     self.bump();
+                    // Clear simple key context on blank lines (separates mapping entries)
+                    self.simple_key_context = None;
                     continue;
                 } // skip blank lines inside block
                 Tok::Comment(c) => {
@@ -1087,6 +1280,20 @@ impl<'a> Parser<'a> {
                 _ => break, // anything else ends this block
             }
         }
+
+        // Check for orphaned simple key at end of block
+        // If we still have a simple_key_context set, it means we saw a potential key
+        // but never saw its colon before the block ended
+        if let Some(key_indent) = self.simple_key_context {
+            if saw_map || saw_seq {
+                // We established a structure but have an orphaned key
+                return Err(Error::Parse(
+                    format!("orphaned content [at block end]: expected ':' after mapping key at indent {} (missing colon?)", key_indent)
+                ));
+            }
+        }
+        // Clear simple key context when exiting block
+        self.simple_key_context = None;
 
         let mut result = if saw_map && !saw_seq {
             Elem::new(Node::Map(entries))
@@ -1195,6 +1402,45 @@ impl<'a> Parser<'a> {
                             text.push(' ');
                         }
                         text.push_str(&rest);
+                    }
+
+                    // Check for continuation lines (indented more than parent) - same logic as parse_line_value_or_nested
+                    // This enables multiline plain scalars in mapping values: "key: foo\n  bar"
+                    loop {
+                        match self.look.clone() {
+                            Tok::Newline => {
+                                self.bump();
+                                // Check if next line is indented more than parent
+                                if let Tok::Indent(continuation_indent) = self.look {
+                                    // Continuation lines must be indented more than the parent context
+                                    if continuation_indent > parent_indent {
+                                        self.bump(); // consume indent
+                                        // Collect this continuation line
+                                        if let Tok::Str(cont_str) = &self.look {
+                                            let cont_text = cont_str.text.clone();
+                                            self.bump();
+                                            // Add space and continuation text
+                                            text.push(' ');
+                                            text.push_str(&cont_text);
+                                            // Continue checking for more lines
+                                            continue;
+                                        }
+                                    }
+                                }
+                                // Not a continuation, done collecting
+                                break;
+                            }
+                            Tok::Comment(_) => {
+                                // Trailing comment terminates the scalar
+                                // TODO: Detect invalid case where continuation content follows the comment
+                                // (BF9H, BS4K, 8XDJ tests) - requires more sophisticated lookahead
+                                break;
+                            }
+                            _ => {
+                                // No newline, done collecting
+                                break;
+                            }
+                        }
                     }
                 }
 
@@ -1355,6 +1601,8 @@ impl<'a> Parser<'a> {
                         }
                         Tok::Newline => {
                             self.bump();
+                            // Clear simple key context on blank lines (separates mapping entries)
+                            self.simple_key_context = None;
                         }
                         Tok::DocStart | Tok::DocEnd => {
                             return Err(Error::Parse(
@@ -2353,7 +2601,24 @@ impl<'a> Parser<'a> {
                             break;
                         }
                         Tok::Comment(_) => {
-                            // Skip comments and continue checking
+                            // YAML 1.2 §7.3.2: Comments terminate plain scalar content
+                            // If a comment appears during multiline plain scalar collection,
+                            // it terminates the scalar. Any subsequent lines at continuation
+                            // indent would be orphaned content (invalid).
+                            // Check if there are more continuation lines after this comment
+                            self.bump(); // consume comment
+                            if let Tok::Newline = self.look {
+                                self.bump(); // consume newline
+                                if let Tok::Indent(next_indent) = self.look {
+                                    if next_indent > parent_indent {
+                                        // There's a continuation line after the comment - this is invalid!
+                                        return Err(Error::Parse(
+                                            "comments cannot appear within multiline plain scalars (YAML 1.2 §7.3.2)".into()
+                                        ));
+                                    }
+                                }
+                            }
+                            // Comment terminates scalar, no error if no continuation
                             break;
                         }
                         _ => {

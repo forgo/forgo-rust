@@ -49,6 +49,9 @@ pub struct Lexer<'a> {
     /// Track flow collection depth: incremented by '[' and '{', decremented by ']' and '}'
     /// Used to determine context for plain scalar character validation
     flow_depth: usize,
+    /// Column position in current line (for tab handling)
+    /// Reset to 0 at line start, incremented as we consume characters
+    column: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -69,6 +72,7 @@ impl<'a> Lexer<'a> {
             _ => {}
         }
         self.line_start = true;
+        self.column = 0;
     }
     pub fn new(s: &'a str) -> Self {
         let mut me = Self {
@@ -77,6 +81,7 @@ impl<'a> Lexer<'a> {
             line_start: true,
             saw_cr: false,
             flow_depth: 0,
+            column: 0,
         };
         // Skip UTF-8 BOM if present
         if me.peek() == Some('\u{FEFF}') {
@@ -150,17 +155,18 @@ impl<'a> Lexer<'a> {
             // compute indent or detect blank/comment lines
             let spaces = leading_spaces(&self.s[self.i..]);
             self.i += spaces;
+            self.column += spaces;
 
-            // Handle tabs after leading spaces
             // Per YAML 1.2.2 §6.2: Tabs are *forbidden* for determining indentation level
-            // but allowed as separators between tokens
+            // but allowed as separators between tokens (after indent is established)
             //
-            // The key insight: if a line starts with spaces followed by a tab followed by
-            // non-whitespace content, the tab is being used for indentation (invalid).
-            // But if the line has content, then tabs within that content are separators (valid).
+            // Key insight from c-libfyaml: We need to distinguish:
+            // - Tabs at column 0 or used to establish indentation: FORBIDDEN
+            // - Tabs after indent is established (as separators): ALLOWED
             //
-            // For now, reject tabs that appear to establish indentation (no preceding spaces,
-            // or tabs used to indent nested content)
+            // For now, only catch tabs at column 0 (strictest case)
+            // TODO: Full implementation needs to track whether we're still in
+            // "indentation establishment" phase vs "content" phase
             if spaces == 0 && matches!(self.peek(), Some('\t')) {
                 // Tab at column 0 - definitely indentation, not separator
                 return Tok::TabIndent;

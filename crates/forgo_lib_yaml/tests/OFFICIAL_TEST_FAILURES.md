@@ -1,27 +1,6 @@
 # Official YAML Test Suite - Failure Report
 
-**Total Failures:** 57 out of 363 tests (15.7%)
-
----
-
-## Test: 236B - Invalid value after mapping
-
-**Tags:** error, mapping
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-foo:
-  bar
-invalid
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :foo
-   =VAL :bar
-```
+**Total Failures:** 47 out of 363 tests (12.9%)
 
 ---
 
@@ -36,34 +15,6 @@ tree: |
 this
  is
   invalid: x
-tree: |
-+STR
- +DOC
-```
-
----
-
-## Test: 4HVU - Wrong indendation in Sequence
-
-**Tags:** error, sequence, indent
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key:
-   - ok
-   - also ok
-  - wrong
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
-   +SEQ
-    =VAL :ok
-    =VAL :also ok
-   -SEQ
 ```
 
 ---
@@ -80,16 +31,6 @@ top1: &node1
   &k1 key1: val1
 top2: &node2
   &v2 val2
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :top1
-   +MAP &node1
-    =VAL &k1 :key1
-    =VAL :val1
-   -MAP
-   =VAL :top2
 ```
 
 ---
@@ -107,59 +48,6 @@ block scalar: >
 ␣␣
 ␣␣␣
  invalid
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :block scalar
-```
-
----
-
-## Test: 6S55 - Invalid scalar at the end of sequence
-
-**Tags:** error, mapping, sequence
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key:
- - bar
- - baz
- invalid
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
-   +SEQ
-    =VAL :bar
-    =VAL :baz
-```
-
----
-
-## Test: 7MNF - Missing colon
-
-**Tags:** error, mapping
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-top1:
-  key1: val1
-top2
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :top1
-   +MAP
-    =VAL :key1
-    =VAL :val1
-   -MAP
 ```
 
 ---
@@ -175,37 +63,6 @@ tree: |
 key: word1
 #  xxx
   word2
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
-   =VAL :word1
-```
-
----
-
-## Test: 9CWY - Invalid scalar at the end of mapping
-
-**Tags:** error, mapping, sequence
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key:
- - item1
- - item2
-invalid
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
-   +SEQ
-    =VAL :item1
-    =VAL :item2
-   -SEQ
 ```
 
 ---
@@ -222,10 +79,6 @@ tree: |
 %TAG ! tag:example.com,2000:app/
 ---
 !foo "bar"
-tree: |
-+STR
- +DOC
-  =VAL <!foo> "bar
 ```
 
 ---
@@ -239,8 +92,6 @@ tree: |
 **Input YAML:**
 ```yaml
 %YAML 1.2
-tree: |
-+STR
 ```
 
 ---
@@ -255,29 +106,6 @@ tree: |
 ```yaml
 %YAML 1.2
 ...
-tree: |
-+STR
-```
-
----
-
-## Test: BD7L - Invalid mapping after sequence
-
-**Tags:** error, mapping, sequence
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-- item1
-- item2
-invalid: x
-tree: |
-+STR
- +DOC
-  +SEQ
-   =VAL :item1
-   =VAL :item2
 ```
 
 ---
@@ -294,12 +122,6 @@ tree: |
 plain: a
        b # end of scalar
        c
-tree: |
-+STR
- +DOC ---
-  +MAP
-   =VAL :plain
-   =VAL :a b
 ```
 
 ---
@@ -314,11 +136,6 @@ tree: |
 ```yaml
 word1  # comment
 word2
-tree: |
-+STR
- +DOC
-  =VAL :word1
- -DOC
 ```
 
 ---
@@ -333,11 +150,6 @@ tree: |
 ```yaml
 [23
 ]: 42
-tree: |
-+STR
- +DOC
-  +SEQ []
-   =VAL :23
 ```
 
 ---
@@ -353,11 +165,6 @@ tree: |
 ---
 [ key
   : value ]
-tree: |
-+STR
- +DOC ---
-  +SEQ []
-   =VAL :key
 ```
 
 ---
@@ -370,11 +177,6 @@ tree: |
 ```yaml
 foo: "bar
 ————»baz"
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :foo
 ```
 
 ---
@@ -388,38 +190,6 @@ tree: |
 foo:
   a: 1
   ——»b: 2
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :foo
-   +MAP
-    =VAL :a
-    =VAL :1
-```
-
----
-
-## Test: DMG6 - Wrong indendation in Map
-
-**Tags:** error, mapping, indent
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key:
-  ok: 1
- wrong: 2
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
-   +MAP
-    =VAL :ok
-    =VAL :1
-   -MAP
 ```
 
 ---
@@ -437,11 +207,6 @@ scalar1 # comment
 %YAML 1.2
 ---
 scalar2
-tree: |
-+STR
- +DOC ---
-  =VAL :scalar1
- -DOC
 ```
 
 ---
@@ -456,11 +221,6 @@ tree: |
 ```yaml
 k1: v1
  k2: v2
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :k1
 ```
 
 ---
@@ -497,34 +257,6 @@ keep: |+
 
 # Trail
  # comments.
-tree: |
-+STR
-+DOC
- +MAP
-  =VAL :strip
-  =VAL |# text
-  =VAL :clip
-  =VAL |# text\n
-  =VAL :keep
-  =VAL |# text\n\n
- -MAP
--DOC
--STR
-json: |
-{
- "strip": "# text",
- "clip": "# text\n",
- "keep": "# text\n\n"
-}
-dump: |
-strip: |-
- # text
-clip: |
- # text
-keep: |+
- # text
-
-...
 ```
 
 ---
@@ -547,54 +279,30 @@ safe: a!"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~
 safe question mark: ?foo
 safe colon: :foo
 safe dash: -foo
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :safe
-   =VAL :a!"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~ !"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~
-   =VAL :safe question mark
-   =VAL :?foo
-   =VAL :safe colon
-   =VAL ::foo
-   =VAL :safe dash
-   =VAL :-foo
-  -MAP
- -DOC
--STR
-json: |
-{
-  "safe": "a!\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~ !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~",
-  "safe question mark": "?foo",
-  "safe colon": ":foo",
-  "safe dash": "-foo"
-}
-dump: |
-safe: a!"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~ !"#$%&'()*+,-./09:;<=>?@AZ[\]^_`az{|}~
-safe question mark: ?foo
-safe colon: :foo
-safe dash: -foo
 ```
 
 ---
 
-## Test: G7JE - Multiline implicit keys
+## Test: G4RS - Spec Example 2.17. Quoted Scalars
 
-**Tags:** error, mapping
+**Tags:** spec, scalar
 
-**Failure Type:** Should fail but parsed successfully
+**Failure Type:** Should parse but failed
+
+**Error:**
+```
+Parse error: orphaned content [at block end]: expected ':' after mapping key at indent 0 (missing colon?)
+```
 
 **Input YAML:**
 ```yaml
-a\nb: 1
-c
- d: 1
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :a\\nb
-   =VAL :1
+unicode: "Sosa did fine.\u263A"
+control: "\b1998\t1999\t2000\n"
+hex esc: "\x0d\x0a is \r\n"
+
+single: '"Howdy!" he cried.'
+quoted: ' # Not a ''comment''.'
+tie-fighter: '|\-*-/|'
 ```
 
 ---
@@ -612,31 +320,6 @@ seq:
 &anchor
 - a
 - b
-tree: |
-+STR
- +DOC ---
-  +MAP
-   =VAL :seq
-```
-
----
-
-## Test: GDY7 - Comment that looks like a mapping key
-
-**Tags:** comment, error, mapping
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-key: value
-this is #not a: key
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
-   =VAL :value
 ```
 
 ---
@@ -652,11 +335,6 @@ tree: |
 - item1
 &node
 - item2
-tree: |
-+STR
- +DOC
-  +SEQ
-   =VAL :item1
 ```
 
 ---
@@ -672,12 +350,6 @@ tree: |
 key: &x
 !!map
   a: b
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
-   =VAL &x :
 ```
 
 ---
@@ -693,11 +365,6 @@ tree: |
 key:
   word1 word2
   no: key
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :key
 ```
 
 ---
@@ -712,11 +379,29 @@ tree: |
 ```yaml
 - - "bar
 bar": x
-tree: |
-+STR
- +DOC
-  +SEQ
-   +SEQ
+```
+
+---
+
+## Test: M6YH - Block sequence indentation
+
+**Tags:** indent
+
+**Failure Type:** Should parse but failed
+
+**Error:**
+```
+Parse error: inconsistent indentation in sequence: expected indent 0, found 1
+```
+
+**Input YAML:**
+```yaml
+- |
+ x
+-
+ foo: bar
+-
+ - 42
 ```
 
 ---
@@ -731,32 +416,6 @@ tree: |
 ```yaml
 %YAML 1.1#...
 ---
-tree: |
-+STR
-```
-
----
-
-## Test: N4JP - Bad indentation in mapping
-
-**Tags:** error, mapping, indent, double
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-map:
-  key1: "quoted1"
- key2: "bad indentation"
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :map
-   +MAP
-    =VAL :key1
-    =VAL "quoted1
-   -MAP
 ```
 
 ---
@@ -771,14 +430,6 @@ tree: |
 ```yaml
 ---
 - { y: z }- invalid
-tree: |
-+STR
- +DOC ---
-  +SEQ
-   +MAP {}
-    =VAL :y
-    =VAL :z
-   -MAP
 ```
 
 ---
@@ -797,17 +448,6 @@ Parse error: tabs are not allowed for indentation
 **Input YAML:**
 ```yaml
 ———»{}
-tree: |
-+STR
- +DOC
-  +MAP {}
-  -MAP
- -DOC
--STR
-json: |
-{}
-dump: |
-{}
 ```
 
 ---
@@ -824,11 +464,6 @@ dump: |
 quoted: "a
 b
 c"
-tree: |
-+STR
- +DOC ---
-  +MAP
-   =VAL :quoted
 ```
 
 ---
@@ -848,15 +483,6 @@ a: b
 c: d
 --- !prefix!C
 e: f
-tree: |
-+STR
- +DOC ---
-  +MAP <tag:example.com,2011:A>
-   =VAL :a
-   =VAL :b
-  -MAP
- -DOC
- +DOC ---
 ```
 
 ---
@@ -885,34 +511,6 @@ Parse error: block scalar indentation error: leading empty line has 1 spaces but
 - >
  ——»
  detected
-tree: |
-+STR
- +DOC
-  +SEQ
-   =VAL |detected\n
-   =VAL >\n\n# detected\n
-   =VAL | explicit\n
-   =VAL >\t\ndetected\n
-  -SEQ
- -DOC
--STR
-json: |
-[
-  "detected\n",
-  "\n\n# detected\n",
-  " explicit\n",
-  "\t\ndetected\n"
-]
-dump: |
-- |
-  detected
-- >2
-
-
-  # detected
-- |2
-   explicit
-- "\t\ndetected\n"
 ```
 
 ---
@@ -929,9 +527,6 @@ dump: |
 '
 ...
 '
-tree: |
-+STR
- +DOC ---
 ```
 
 ---
@@ -949,11 +544,6 @@ empty block scalar: >
 ␣␣
 ␣␣␣
  # comment
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :empty block scalar
 ```
 
 ---
@@ -972,30 +562,6 @@ Parse error: flow sequence not allowed as map key (use '?' for complex keys)
 **Input YAML:**
 ```yaml
 {a: [b, c], [d, e]: f}
-tree: |
-+STR
- +DOC
-  +MAP {}
-   =VAL :a
-   +SEQ []
-    =VAL :b
-    =VAL :c
-   -SEQ
-   +SEQ []
-    =VAL :d
-    =VAL :e
-   -SEQ
-   =VAL :f
-  -MAP
- -DOC
--STR
-dump: |
-a:
-- b
-- c
-? - d
-  - e
-: f
 ```
 
 ---
@@ -1009,52 +575,6 @@ a:
 **Input YAML:**
 ```yaml
 &anchor - sequence entry
-tree: |
-+STR
-```
-
----
-
-## Test: TD5N - Invalid scalar after sequence
-
-**Tags:** error, sequence, scalar
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-- item1
-- item2
-invalid
-tree: |
-+STR
- +DOC
-  +SEQ
-   =VAL :item1
-   =VAL :item2
-```
-
----
-
-## Test: U44R - Bad indentation in mapping (2)
-
-**Tags:** error, mapping, indent, double
-
-**Failure Type:** Should fail but parsed successfully
-
-**Input YAML:**
-```yaml
-map:
-  key1: "quoted1"
-   key2: "bad indentation"
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :map
-   +MAP
-    =VAL :key1
-    =VAL "quoted1
 ```
 
 ---
@@ -1072,11 +592,6 @@ block scalar: |
 ␣␣␣␣␣
   more spaces at the beginning
   are invalid
-tree: |
-+STR
- +DOC ---
-  +MAP
-   =VAL :block scalar
 ```
 
 ---
@@ -1098,25 +613,6 @@ Parse error: invalid tag format: '!!str' cannot be followed by ',' without white
   foo : !!str,
   !!str : bar,
 }
-tree: |
-+STR
- +DOC
-  +MAP {}
-   =VAL :foo
-   =VAL <tag:yaml.org,2002:str> :
-   =VAL <tag:yaml.org,2002:str> :
-   =VAL :bar
-  -MAP
- -DOC
--STR
-json: |
-{
-  "foo": "",
-  "": "bar"
-}
-dump: |
-foo: !!str
-!!str : bar
 ```
 
 ---
@@ -1135,33 +631,6 @@ Parse error: flow sequence not allowed as map key (use '?' for complex keys)
 **Input YAML:**
 ```yaml
 { &a [a, &b b]: *b, *a : [c, *b, d]}
-tree: |
-+STR
- +DOC
-  +MAP {}
-   +SEQ [] &a
-    =VAL :a
-    =VAL &b :b
-   -SEQ
-   =ALI *b
-   =ALI *a
-   +SEQ []
-    =VAL :c
-    =ALI *b
-    =VAL :d
-   -SEQ
-  -MAP
- -DOC
--STR
-dump: |
-? &a
-- a
-- &b b
-: *b
-*a :
-- c
-- *b
-- d
 ```
 
 ---
@@ -1177,11 +646,6 @@ dump: |
 foo: |
 ————»
 bar: 1
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :foo
 ```
 
 ---
@@ -1263,11 +727,6 @@ tree: |
 **Input YAML:**
 ```yaml
 a: b: c: d
-tree: |
-+STR
- +DOC
-  +MAP
-   =VAL :a
 ```
 
 ---
@@ -1282,14 +741,6 @@ tree: |
 ```yaml
 - key: value
  - item1
-tree: |
-+STR
- +DOC
-  +SEQ
-   +MAP
-    =VAL :key
-    =VAL :value
-   -MAP
 ```
 
 ---
@@ -1304,11 +755,6 @@ tree: |
 ```yaml
 [ "key"
   :value ]
-tree: |
-+STR
- +DOC
-  +SEQ []
-   =VAL "key
 ```
 
 ---
