@@ -606,6 +606,12 @@ pub struct Doc {
 pub enum Error {
     Io(std::io::Error),
     Parse(String),
+    /// A syntax error at a 1-based line and column.
+    Syntax {
+        line: usize,
+        col: usize,
+        msg: String,
+    },
     Emit(String),
     Fmt(std::fmt::Error),
 }
@@ -629,6 +635,7 @@ impl fmt::Display for Error {
         match self {
             Error::Io(e) => write!(f, "I/O error: {e}"),
             Error::Parse(s) => write!(f, "Parse error: {s}"),
+            Error::Syntax { line, col, msg } => write!(f, "Parse error at {line}:{col}: {msg}"),
             Error::Emit(s) => write!(f, "Emit error: {s}"),
             Error::Fmt(e) => write!(f, "Format error: ${e}"),
         }

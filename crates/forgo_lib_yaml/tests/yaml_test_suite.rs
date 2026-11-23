@@ -5,7 +5,9 @@
 //!
 //! - `error`:  accept/reject agrees with the presence of an `error` file;
 //! - `events`: the event stream equals `test.event` (valid cases);
-//! - `json`:   the composed documents equal `in.json` (valid cases that have one).
+//! - `json`:   the composed documents equal `in.json` (valid cases that have one);
+//! - `coverage`: every input byte outside tokens and comments is white space
+//!   (valid cases), so the scanner can't silently drop content.
 //!
 //! Checks listed in [`GATED`] fail this test when a failure is missing from
 //! `yaml_test_suite/known_failures.txt`, or when a listed failure passes, so
@@ -38,16 +40,18 @@ enum Check {
     Error,
     Events,
     Json,
+    Coverage,
 }
 
 impl Check {
-    const ALL: [Check; 3] = [Check::Error, Check::Events, Check::Json];
+    const ALL: [Check; 4] = [Check::Error, Check::Events, Check::Json, Check::Coverage];
 
     fn name(self) -> &'static str {
         match self {
             Check::Error => "error",
             Check::Events => "events",
             Check::Json => "json",
+            Check::Coverage => "coverage",
         }
     }
 
@@ -56,11 +60,12 @@ impl Check {
     }
 }
 
-/// Checks that gate this test. Phase 0 measures the legacy parser, report-only.
-const GATED: &[Check] = &[];
+/// Checks that gate this test. The JSON check joins once the composer
+/// replaces the legacy parser (Phase 2).
+const GATED: &[Check] = &[Check::Error, Check::Events, Check::Coverage];
 
 /// What is under test, for the report header.
-const SUBJECT: &str = "legacy parser via `Doc::from_stream`";
+const SUBJECT: &str = "event core (`forgo_lib_yaml::events`) for error/events/coverage; legacy `Doc::from_stream` for json";
 
 // ---------------------------------------------------------------------------
 // Cases
@@ -145,31 +150,65 @@ struct Run {
     accepted: Result<(), String>,
     events: Option<Result<Vec<String>, EventsError>>,
     json: Option<Result<Vec<Json>, String>>,
+    coverage: Option<Result<(), String>>,
 }
 
 fn run_subject(yaml: Vec<u8>) -> Run {
-    let text = match String::from_utf8(yaml) {
-        Ok(t) => t,
+    use forgo_lib_yaml::syntax::{input, test_event::to_test_event, uncovered_content};
+
+    let text = match input::decode(&yaml) {
+        Ok(t) => t.into_owned(),
         Err(e) => {
-            let msg = format!("input is not UTF-8: {e}");
+            let msg = e.to_string();
             return Run {
                 accepted: Err(msg.clone()),
-                events: None,
+                events: Some(Err((Vec::new(), msg.clone()))),
                 json: Some(Err(msg)),
+                coverage: None,
             };
         }
     };
-    match forgo_lib_yaml::Doc::from_stream(&text) {
-        Ok(docs) => Run {
-            accepted: Ok(()),
-            events: None,
-            json: Some(doc_json::docs_to_json(&docs)),
-        },
-        Err(e) => Run {
-            accepted: Err(e.to_string()),
-            events: None,
-            json: Some(Err(e.to_string())),
-        },
+
+    let mut lines = Vec::new();
+    let mut error = None;
+    for r in forgo_lib_yaml::events(&text) {
+        match r {
+            Ok((ev, _)) => lines.push(to_test_event(&ev)),
+            Err(e) => {
+                error = Some(e.to_string());
+                break;
+            }
+        }
+    }
+    let (accepted, events, coverage) = match error {
+        None => {
+            let coverage = match uncovered_content(&text) {
+                Ok(gaps) if gaps.is_empty() => Ok(()),
+                Ok(gaps) => Err(format!(
+                    "uncovered content: {}",
+                    gaps.iter()
+                        .take(3)
+                        .map(|g| format!("{:?} {:?}", g, &text[g.clone()]))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+                Err(e) => Err(format!("scanner failed: {e}")),
+            };
+            (Ok(()), Ok(lines), Some(coverage))
+        }
+        Some(e) => (Err(e.clone()), Err((lines, e)), None),
+    };
+
+    let json = match forgo_lib_yaml::Doc::from_stream(&text) {
+        Ok(docs) => doc_json::docs_to_json(&docs),
+        Err(e) => Err(e.to_string()),
+    };
+
+    Run {
+        accepted,
+        events: Some(events),
+        json: Some(json),
+        coverage,
     }
 }
 
@@ -242,7 +281,7 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 struct Results {
-    tallies: [Tally; 3],
+    tallies: [Tally; 4],
     /// Error cases where `test.event` is a prefix of our events before the error.
     error_pos_agree: usize,
     error_pos_checked: usize,
@@ -305,6 +344,16 @@ fn evaluate(cases: &[Case]) -> Results {
             }
         }
 
+        // coverage
+        if !case.error {
+            let t = &mut r.tallies[Check::Coverage as usize];
+            match &run.coverage {
+                None => t.not_run += 1,
+                Some(Ok(())) => t.pass.push(case.id.clone()),
+                Some(Err(e)) => t.fail.push((case.id.clone(), e.clone())),
+            }
+        }
+
         // json
         if let (false, Some(text)) = (case.error, &case.json) {
             let expected = json::parse_many(text)
@@ -348,6 +397,11 @@ fn fail_all(r: &mut Results, case: &Case, detail: &str) {
     }
     if !case.error && case.json.is_some() {
         r.tallies[Check::Json as usize]
+            .fail
+            .push((case.id.clone(), detail.to_string()));
+    }
+    if !case.error {
+        r.tallies[Check::Coverage as usize]
             .fail
             .push((case.id.clone(), detail.to_string()));
     }
