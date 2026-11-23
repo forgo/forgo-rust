@@ -71,6 +71,25 @@ pub fn stringify(doc: &Doc) -> Result<String, Error> {
     doc.to_string()
 }
 
+/// Parse the first document of a YAML byte stream: UTF-8, UTF-16 or UTF-32
+/// (detected per YAML 1.2.2 §5.2, with or without a byte order mark).
+///
+/// This is a convenience wrapper around [`Doc::from_slice`].
+///
+/// # Examples
+///
+/// ```
+/// use forgo_lib_yaml::parse_bytes;
+///
+/// // "a: 1" in UTF-16LE with a byte order mark
+/// let bytes: Vec<u8> = "\u{FEFF}a: 1".encode_utf16().flat_map(u16::to_le_bytes).collect();
+/// let doc = parse_bytes(&bytes).unwrap();
+/// assert_eq!(doc.root().node().as_map().unwrap()[0].1.node().as_i64(), Some(1));
+/// ```
+pub fn parse_bytes(bytes: &[u8]) -> Result<Doc, Error> {
+    Doc::from_slice(bytes)
+}
+
 /// Parse multiple YAML documents from a stream (separated by --- or ...)
 ///
 /// This is a convenience wrapper around [`Doc::from_stream`].
