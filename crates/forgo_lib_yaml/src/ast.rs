@@ -818,12 +818,62 @@ impl Doc {
     // Public API; `str::parse::<Doc>()` works through the `FromStr` impl below.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(input: &str) -> Result<Self, Error> {
-        crate::compose::compose_first(input)
+        crate::compose::compose_first(input, &crate::ParseOptions::default())
     }
 
     /// Parse every document of a YAML stream.
     pub fn from_stream(input: &str) -> Result<Vec<Self>, Error> {
         crate::compose::compose_stream(input)
+    }
+
+    /// [`Doc::from_str`] with explicit limits.
+    pub fn from_str_with(input: &str, options: &crate::ParseOptions) -> Result<Self, Error> {
+        crate::compose::compose_first(input, options)
+    }
+
+    /// [`Doc::from_stream`] with explicit limits.
+    pub fn from_stream_with(
+        input: &str,
+        options: &crate::ParseOptions,
+    ) -> Result<Vec<Self>, Error> {
+        crate::compose::compose_stream_with(input, options)
+    }
+
+    /// Nesting depth of the tree (collections), computed without recursion.
+    fn depth(&self) -> usize {
+        let mut max = 0;
+        let mut stack = vec![(&self.root, 0usize)];
+        while let Some((e, d)) = stack.pop() {
+            match &e.node {
+                Node::Seq(items) => {
+                    max = max.max(d + 1);
+                    stack.extend(items.iter().map(|i| (i, d + 1)));
+                }
+                Node::Map(entries) => {
+                    max = max.max(d + 1);
+                    for (k, v) in entries {
+                        stack.push((v, d + 1));
+                        if let MapKey::Complex(ke) = k {
+                            stack.push((ke, d + 1));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        max
+    }
+
+    /// The emitter recurses over the tree; refuse trees deeper than the
+    /// default parse limit allows (for trees built in code).
+    fn check_emit_depth(&self) -> Result<(), Error> {
+        const MAX: usize = 512;
+        if self.depth() > MAX {
+            return Err(Error::Emit(format!(
+                "collections are nested more than {MAX} levels deep"
+            )));
+        }
+        Ok(())
     }
 
     /// Decode a byte stream (UTF-8, UTF-16 or UTF-32, detected per YAML
@@ -925,6 +975,7 @@ impl Doc {
     }
 
     fn emit_one_into(&self, out: &mut String, needs_start: bool) -> Result<(), Error> {
+        self.check_emit_depth()?;
         // Directives must precede `---`; after another document they also
         // need that document to end with `...`.
         let has_directives = self.yaml_version.is_some() || !self.tag_handles.is_empty();
@@ -1163,6 +1214,6 @@ impl std::str::FromStr for Doc {
     type Err = Error;
 
     fn from_str(input: &str) -> Result<Self, Error> {
-        crate::compose::compose_first(input)
+        crate::compose::compose_first(input, &crate::ParseOptions::default())
     }
 }

@@ -25,6 +25,22 @@ pub use syntax::{
 };
 pub use util::needs_quotes;
 
+/// Limits applied while composing documents.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParseOptions {
+    /// Deepest allowed nesting of collections. Deeper input is an error
+    /// instead of risking a stack overflow in code that walks the tree
+    /// recursively (dropping, cloning, comparing and emitting it). The
+    /// event parser itself has no limit.
+    pub max_depth: usize,
+}
+
+impl Default for ParseOptions {
+    fn default() -> Self {
+        ParseOptions { max_depth: 512 }
+    }
+}
+
 // ============================================================================
 // Layer 1: Simple "Just Works" API
 // ============================================================================

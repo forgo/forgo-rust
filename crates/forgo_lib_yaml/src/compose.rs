@@ -22,6 +22,14 @@ use std::collections::HashSet;
 
 /// Compose every document in `input`.
 pub(crate) fn compose_stream(input: &str) -> Result<Vec<Doc>, Error> {
+    compose_stream_with(input, &crate::ParseOptions::default())
+}
+
+/// Compose every document in `input` with explicit limits.
+pub(crate) fn compose_stream_with(
+    input: &str,
+    options: &crate::ParseOptions,
+) -> Result<Vec<Doc>, Error> {
     let mut events = syntax::events(input);
     let mut evs = Vec::new();
     for r in &mut events {
@@ -39,6 +47,7 @@ pub(crate) fn compose_stream(input: &str) -> Result<Vec<Doc>, Error> {
         anchors: HashSet::new(),
         doc: None,
         docs: Vec::new(),
+        max_depth: options.max_depth,
     };
     for (ev, span) in evs {
         c.event(ev, span)?;
@@ -48,8 +57,8 @@ pub(crate) fn compose_stream(input: &str) -> Result<Vec<Doc>, Error> {
 
 /// Compose the first document, or an empty one (keeping any comments) when
 /// the stream has none.
-pub(crate) fn compose_first(input: &str) -> Result<Doc, Error> {
-    let mut docs = compose_stream(input)?;
+pub(crate) fn compose_first(input: &str, options: &crate::ParseOptions) -> Result<Doc, Error> {
+    let mut docs = compose_stream_with(input, options)?;
     if docs.is_empty() {
         let comments = syntax_comments(input)?;
         return Ok(Doc::empty_with_comments(comments));
@@ -108,6 +117,7 @@ struct Composer<'a> {
     anchors: HashSet<String>,
     doc: Option<DocInfo>,
     docs: Vec<Doc>,
+    max_depth: usize,
 }
 
 fn source_tag(t: &Tag<'_>) -> String {
@@ -247,6 +257,19 @@ impl<'a> Composer<'a> {
         meta.tag = tag.map(source_tag);
     }
 
+    fn check_depth(&self, span: Span) -> Result<(), Error> {
+        if self.stack.len() >= self.max_depth {
+            return Err(syntax_err(
+                span.start,
+                format!(
+                    "collections are nested more than {} levels deep (see ParseOptions::max_depth)",
+                    self.max_depth
+                ),
+            ));
+        }
+        Ok(())
+    }
+
     fn event(&mut self, ev: Event<'a>, span: Span) -> Result<(), Error> {
         match ev {
             Event::StreamStart => {}
@@ -368,6 +391,7 @@ impl<'a> Composer<'a> {
                 });
             }
             Event::SequenceStart { anchor, tag, flow } => {
+                self.check_depth(span)?;
                 let mut meta = Meta::default();
                 self.begin_node(span.start, true, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
@@ -379,6 +403,7 @@ impl<'a> Composer<'a> {
                 }));
             }
             Event::MappingStart { anchor, tag, flow } => {
+                self.check_depth(span)?;
                 let mut meta = Meta::default();
                 self.begin_node(span.start, true, &mut meta);
                 self.props(anchor, tag.as_ref(), &mut meta);
@@ -432,7 +457,7 @@ mod tests {
     use super::*;
 
     fn one(input: &str) -> Doc {
-        compose_first(input).unwrap()
+        compose_first(input, &crate::ParseOptions::default()).unwrap()
     }
 
     #[test]

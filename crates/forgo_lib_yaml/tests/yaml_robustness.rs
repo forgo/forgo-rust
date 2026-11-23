@@ -256,3 +256,26 @@ fn mutated_suite_inputs_never_panic() {
         problems.join("\n")
     );
 }
+
+#[test]
+fn deep_nesting_is_an_error_not_a_crash() {
+    // The event parser handles any depth; composing stops at the limit.
+    let deep = format!("{}{}", "[".repeat(100_000), "]".repeat(100_000));
+    assert_eq!(forgo_lib_yaml::events(&deep).count(), 200_004);
+    let err = forgo_lib_yaml::Doc::from_str(&deep)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("nested more than 512"), "{err}");
+    let block: String = (0..2000)
+        .map(|i| format!("{}a:\n", "  ".repeat(i)))
+        .collect();
+    assert!(forgo_lib_yaml::Doc::from_str(&block).is_err());
+
+    // At the limit, parse, emit, clone, compare and drop all work.
+    let ok = format!("{}{}", "[".repeat(512), "]".repeat(512));
+    let d = forgo_lib_yaml::Doc::from_str(&ok).unwrap();
+    let out = d.to_string().unwrap();
+    assert_eq!(forgo_lib_yaml::Doc::from_str(&out).unwrap(), d.clone());
+    let opts = forgo_lib_yaml::ParseOptions { max_depth: 10 };
+    assert!(forgo_lib_yaml::Doc::from_str_with(&ok, &opts).is_err());
+}

@@ -19,7 +19,7 @@ use super::chars::*;
 use super::event::{BlockHeader, Chomping, Mark, ScalarStyle};
 use crate::ast::Error;
 use std::borrow::Cow;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum TokenKind<'a> {
@@ -113,6 +113,13 @@ pub(crate) struct Scanner<'a> {
     simple_key_allowed: bool,
     /// Index 0 is the block context, index i the flow level i.
     simple_keys: Vec<SimpleKey>,
+    /// Levels whose simple key is possible, and the subset that can go
+    /// stale (not in a flow mapping). Possible keys sit at increasing
+    /// positions and token numbers by level, so only the lowest ones ever
+    /// need checking: O(1) amortized work per candidate however deep the
+    /// nesting (a linear scan per token would be quadratic).
+    possible_levels: BTreeSet<usize>,
+    stale_levels: BTreeSet<usize>,
     flows: Vec<FlowKind>,
     /// Kind and end of the last token produced (for separation checks).
     last_kind: LastToken,
@@ -154,6 +161,8 @@ impl<'a> Scanner<'a> {
             indents: Vec::new(),
             simple_key_allowed: false,
             simple_keys: vec![SimpleKey::NONE],
+            possible_levels: BTreeSet::new(),
+            stale_levels: BTreeSet::new(),
             flows: Vec::new(),
             last_kind: LastToken::Boundary,
             last_end: 0,
@@ -338,10 +347,11 @@ impl<'a> Scanner<'a> {
             let mut need_more = self.tokens.is_empty();
             if !need_more {
                 self.stale_simple_keys()?;
+                // The lowest possible key has the smallest token number.
                 need_more = self
-                    .simple_keys
-                    .iter()
-                    .any(|k| k.possible && k.token_number == self.tokens_parsed);
+                    .possible_levels
+                    .first()
+                    .is_some_and(|&l| self.simple_keys[l].token_number == self.tokens_parsed);
             }
             if !need_more {
                 return Ok(());
@@ -588,11 +598,8 @@ impl<'a> Scanner<'a> {
     /// context and flow sequences a key must be on one line and at most
     /// 1024 characters long. Keys in flow mappings have neither limit.
     fn stale_simple_keys(&mut self) -> Res<()> {
-        for level in 0..self.simple_keys.len() {
+        while let Some(&level) = self.stale_levels.first() {
             let k = self.simple_keys[level];
-            if !k.possible || self.in_flow_mapping(level) {
-                continue;
-            }
             if k.mark.line < self.mark.line || self.mark.col > k.mark.col + 1024 {
                 if k.required {
                     return Err(self.err(
@@ -600,10 +607,32 @@ impl<'a> Scanner<'a> {
                         "could not find expected `:` after this implicit key",
                     ));
                 }
-                self.simple_keys[level].possible = false;
+                self.clear_key(level);
+            } else {
+                // Keys at higher levels come later on this line: not stale.
+                break;
             }
         }
         Ok(())
+    }
+
+    fn set_key(&mut self, level: usize, key: SimpleKey) {
+        self.clear_key(level);
+        self.simple_keys[level] = key;
+        if key.possible {
+            self.possible_levels.insert(level);
+            if !self.in_flow_mapping(level) {
+                self.stale_levels.insert(level);
+            }
+        }
+    }
+
+    fn clear_key(&mut self, level: usize) {
+        if self.simple_keys[level].possible {
+            self.simple_keys[level].possible = false;
+            self.possible_levels.remove(&level);
+            self.stale_levels.remove(&level);
+        }
     }
 
     fn save_simple_key(&mut self) -> Res<()> {
@@ -617,7 +646,8 @@ impl<'a> Scanner<'a> {
                 mark: self.mark,
                 after_tab: self.tab_before(self.mark.index),
             };
-            *self.simple_keys.last_mut().unwrap() = key;
+            let top = self.simple_keys.len() - 1;
+            self.set_key(top, key);
         }
         Ok(())
     }
@@ -630,7 +660,8 @@ impl<'a> Scanner<'a> {
                 "could not find expected `:` after this implicit key",
             ));
         }
-        self.simple_keys.last_mut().unwrap().possible = false;
+        let top = self.simple_keys.len() - 1;
+        self.clear_key(top);
         Ok(())
     }
 
@@ -805,7 +836,8 @@ impl<'a> Scanner<'a> {
                 TokenKind::BlockMappingStart,
                 k.mark,
             );
-            self.simple_keys.last_mut().unwrap().possible = false;
+            let top = self.simple_keys.len() - 1;
+            self.clear_key(top);
             self.simple_key_allowed = false;
         } else {
             if self.flows.is_empty() {
