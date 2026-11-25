@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   audit:
+    name: ${{ matrix.lockfile == '.' && 'audit (workspace)' || format('audit ({0})', matrix.lockfile) }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
