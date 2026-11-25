@@ -67,6 +67,38 @@ pub fn normalize_string_list(seq: &mut Vec<Elem>) -> bool {
     true
 }
 
+/// [`normalize_string_list`] for lists that must hold only strings: an
+/// item that isn't a string (an alias, a number, a collection) is an error
+/// and the list is left as it was, instead of being converted. Returns
+/// whether the list changed.
+///
+/// ```
+/// use forgo_lib_yaml::{try_normalize_string_list, Doc};
+///
+/// let mut doc = Doc::from_str("crates: [web, api]\nmixed: [b, 2]\n")?;
+/// let map = doc.root_mut().node_mut().as_map_mut().unwrap();
+/// let crates = map[0].1.node_mut().as_seq_mut().unwrap();
+/// assert!(try_normalize_string_list(crates)?);
+/// let mixed = map[1].1.node_mut().as_seq_mut().unwrap();
+/// assert!(try_normalize_string_list(mixed).is_err());
+/// assert_eq!(doc.to_string()?, "crates: [api, web]\nmixed: [b, 2]\n");
+/// # Ok::<(), forgo_lib_yaml::Error>(())
+/// ```
+pub fn try_normalize_string_list(seq: &mut Vec<Elem>) -> Result<bool, Error> {
+    if let Some((i, e)) = seq
+        .iter()
+        .enumerate()
+        .find(|(_, e)| !matches!(e.node, Node::Scalar(Scalar::Str(_))))
+    {
+        return Err(Error::Edit(format!(
+            "item {} of the list is not a string (`{}`)",
+            i + 1,
+            item_text(e)
+        )));
+    }
+    Ok(normalize_string_list(seq))
+}
+
 /// Edit a YAML file in place: in every document of the file, apply
 /// `updater` to each sequence at `seg_path`, then sort and dedup it with
 /// [`normalize_string_list`]. The file is written only when something

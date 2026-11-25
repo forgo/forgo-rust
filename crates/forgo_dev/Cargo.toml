@@ -3,5 +3,7 @@ name = "forgo_dev"
 version = "0.1.0"
 edition = "2024"
 publish = false
+description = "Repo-native developer tools for the forgo-rust workspace, run as `cargo x`."
 
 [dependencies]
+forgo_lib_yaml = { path = "../forgo_lib_yaml" }

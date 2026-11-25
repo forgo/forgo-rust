@@ -45,14 +45,22 @@ pub mod syntax;
 mod util;
 
 pub use ast::{Doc, Elem, Error, IntoPath, MapKey, Meta, Node, Scalar, Seg, SourceSpan, Style};
-pub use editor::{edit_file_in_place, normalize_string_list};
+pub use editor::{edit_file_in_place, normalize_string_list, try_normalize_string_list};
 pub use syntax::{
     BlockHeader, Chomping, Event, Events, Mark, ScalarStyle, Span, Tag, events, events_from_bytes,
 };
 pub use util::needs_quotes;
 
 /// Limits applied while composing documents.
+///
+/// ```
+/// use forgo_lib_yaml::{Doc, ParseOptions};
+///
+/// let options = ParseOptions::default().with_max_depth(64);
+/// assert!(Doc::from_str_with("a: [[1]]\n", &options).is_ok());
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ParseOptions {
     /// Deepest allowed nesting of collections. Deeper input is an error
     /// instead of risking a stack overflow in code that walks the tree
@@ -64,6 +72,14 @@ pub struct ParseOptions {
 impl Default for ParseOptions {
     fn default() -> Self {
         ParseOptions { max_depth: 512 }
+    }
+}
+
+impl ParseOptions {
+    /// These options with `max_depth` set.
+    pub fn with_max_depth(mut self, max_depth: usize) -> Self {
+        self.max_depth = max_depth;
+        self
     }
 }
 

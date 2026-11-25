@@ -12,7 +12,10 @@
 //! - `append`: a block collection gets a new last entry: exactly one new
 //!   line, right after the last entry;
 //! - `rename`: a plain key whose value is on its line is renamed: only the
-//!   key's text changes.
+//!   key's text changes;
+//! - `empty`: a nested block collection loses all its entries: it is
+//!   written `[]` or `{}` in its place, and the strict writer
+//!   ([`Doc::to_stream_string_preserving`]) accepts the edit.
 //!
 //! Every output must also read back as the edited documents. Inputs: the
 //! files in `tests/editing/` (also with CRLF line breaks, and without a
@@ -455,6 +458,136 @@ fn edits_change_only_the_edited_entry() {
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+/// Empty each nested block collection of each document, one at a time:
+/// the strict writer must keep the source layout (it errors otherwise),
+/// and the output must read back as the edited documents, with the
+/// emptied collection in flow style.
+#[test]
+fn emptying_a_nested_collection_keeps_the_layout() {
+    let (mut total, mut failures) = (0, Vec::new());
+    for (name, text) in &inputs() {
+        let Ok(docs) = Doc::from_stream(text) else {
+            continue;
+        };
+        for d in 0..docs.len() {
+            let mut paths = Vec::new();
+            collections(docs[d].root(), &mut Vec::new(), &mut paths);
+            for path in paths.into_iter().filter(|p| !p.is_empty()) {
+                // Keep-chomped block scalars own the lines after them, and
+                // an anchor can't go while aliases may still refer to it.
+                let c = get(docs[d].root(), &path);
+                if ends_with_keep(c) || has_anchor(c) {
+                    continue;
+                }
+                total += 1;
+                let mut edited = docs.clone();
+                match &mut get_mut(edited[d].root_mut(), &path).node {
+                    Node::Map(m) => m.clear(),
+                    Node::Seq(s) => s.clear(),
+                    _ => unreachable!(),
+                }
+                let out = match Doc::to_stream_string_preserving(&edited) {
+                    Ok(out) => out,
+                    Err(e) => {
+                        failures.push(format!("{name} doc {d} {path:?}: {e}"));
+                        continue;
+                    }
+                };
+                get_mut(edited[d].root_mut(), &path).meta.style = Some(Style::Flow);
+                match Doc::from_stream(&out) {
+                    Ok(back) if back == edited => {}
+                    _ => failures.push(format!("{name} doc {d} {path:?}: reads back differently")),
+                }
+            }
+        }
+    }
+    println!("emptying: {total} edits, {} failures", failures.len());
+    assert!(
+        failures.is_empty(),
+        "{} of {total} emptied collections didn't keep the layout:\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .take(25)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn an_emptied_collection_is_written_in_its_place() {
+    fn empty(text: &str, path: &[Step]) -> String {
+        let mut doc = Doc::from_str(text).unwrap();
+        match &mut get_mut(doc.root_mut(), path).node {
+            Node::Map(m) => m.clear(),
+            Node::Seq(s) => s.clear(),
+            _ => unreachable!(),
+        }
+        doc.to_string_preserving().unwrap()
+    }
+    use Step::{Item, Value};
+    let cases: &[(&str, &[Step], &str)] = &[
+        (
+            "a:\n  b:\n    - x\n    - y\n  c: 1\n",
+            &[Value(0), Value(0)],
+            "a:\n  b: []\n  c: 1\n",
+        ),
+        (
+            "a:\n  b:\n    k: v\n  c: 1\n",
+            &[Value(0), Value(0)],
+            "a:\n  b: {}\n  c: 1\n",
+        ),
+        // A comment on the key's line stays; the items' comments go with
+        // them; the next entry's comment stays.
+        (
+            "a:\n  b:  # note\n    - x\n  c: 1\n",
+            &[Value(0), Value(0)],
+            "a:\n  b: [] # note\n  c: 1\n",
+        ),
+        (
+            "a:\n  b:\n    # first\n    - x\n    - y  # why\n  # about c\n  c: 1\n",
+            &[Value(0), Value(0)],
+            "a:\n  b: []\n  # about c\n  c: 1\n",
+        ),
+        (
+            "a:\r\n  b:\r\n    - x\r\n  c: 1\r\n",
+            &[Value(0), Value(0)],
+            "a:\r\n  b: []\r\n  c: 1\r\n",
+        ),
+        ("a:\n  - x", &[Value(0)], "a: []"),
+        (
+            "z: 1\na:\n  b:\n    - x",
+            &[Value(1), Value(0)],
+            "z: 1\na:\n  b: []",
+        ),
+        ("a:\n- x\n- y\nb: 1\n", &[Value(0)], "a: []\nb: 1\n"),
+        (
+            "a: &anchor\n  - x\nb: 1\n",
+            &[Value(0)],
+            "a: &anchor []\nb: 1\n",
+        ),
+        (
+            "a: !!seq\n  - x\nb: 1\n",
+            &[Value(0)],
+            "a: !!seq []\nb: 1\n",
+        ),
+        ("- - x\n  - y\n- z\n", &[Item(0)], "- []\n- z\n"),
+        ("- k: v\n  j: 2\n- z\n", &[Item(0)], "- {}\n- z\n"),
+        ("- z\n- - x\n  - y", &[Item(1)], "- z\n- []"),
+    ];
+    for (text, path, expected) in cases {
+        assert_eq!(empty(text, path), *expected, "{text:?}");
+    }
+    // An emptied root collection can't keep the layout around it.
+    let mut doc = Doc::from_str("- x\n").unwrap();
+    if let Node::Seq(s) = &mut doc.root_mut().node {
+        s.clear();
+    }
+    assert!(doc.to_string_preserving().is_err());
+    assert_eq!(doc.to_string().unwrap(), "[]\n");
 }
 
 #[test]

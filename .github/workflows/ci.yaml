@@ -13,6 +13,7 @@ jobs:
       matrix:
         project:
           - forgo
+          - forgo_dev
           - forgo_lib_cli
           - forgo_lib_yaml
     steps:
@@ -46,6 +47,7 @@ jobs:
       matrix:
         project:
           - forgo
+          - forgo_dev
           - forgo_lib_cli
           - forgo_lib_yaml
     steps:
@@ -61,3 +63,44 @@ jobs:
         env:
           # The YAML compliance tests fail instead of skipping without the suite.
           YAML_TEST_SUITE_REQUIRED: "1"
+
+  test-windows:
+    # forgo_dev edits files in place and runs cargo and git: check it on
+    # Windows too (paths, line endings, replacing files).
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Run forgo_dev tests
+        run: cargo test -p forgo_dev
+
+  dependencies:
+    # The workspace has no third-party dependencies apart from wasm-bindgen
+    # (for `cargo x new wasm` crates). Any other crate in Cargo.lock must be
+    # added to .github/allowed-dependencies.txt on purpose.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Check Cargo.lock for third-party crates that aren't allowed
+        run: |
+          awk '
+            FNR == NR { sub(/#.*/, ""); gsub(/[ \t\r]/, ""); if ($0 != "") allowed[$0] = 1; next }
+            /^\[\[package\]\]/ { name = "" }
+            /^name = / { name = $3; gsub(/"/, "", name) }
+            /^source = / && !(name in allowed) {
+              print "Cargo.lock: " name " is not in .github/allowed-dependencies.txt"
+              bad = 1
+            }
+            END { exit bad }
+          ' .github/allowed-dependencies.txt Cargo.lock
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Check that Cargo.lock is up to date
+        run: cargo metadata --locked --format-version 1 > /dev/null
