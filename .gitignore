@@ -27,6 +27,10 @@ crates/forgo_lib_yaml/tests/yaml-test-suite-data/
 # crates/forgo_lib_semver/scripts/fetch-node-semver.sh
 crates/forgo_lib_semver/tests/node-semver-data/
 
+# The toml-test suite at a pinned commit (fetched, not committed). To set up:
+# crates/forgo_lib_toml/scripts/fetch-toml-test.sh
+crates/forgo_lib_toml/tests/toml-test-data/
+
 # Scratch debug programs and their compiled binaries (never commit these)
 /test_*
 /debug_*

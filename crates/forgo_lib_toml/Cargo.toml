@@ -1,0 +1,18 @@
+[package]
+name = "forgo_lib_toml"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "MIT"
+description = "TOML 1.1 and 1.0 for Rust: a fast parser and an encoder. Passes the full toml-test suite; no dependencies, no unsafe."
+repository = "https://github.com/forgo/forgo-rust"
+readme = "README.md"
+keywords = ["toml", "parser", "config", "cargo", "encoder"]
+categories = ["parser-implementations", "encoding", "config"]
+
+[dependencies]
+
+[dev-dependencies]
+# Reads toml-test's expected results (JSON) in tests/toml_test.rs.
+forgo_lib_yaml = { path = "../forgo_lib_yaml" }
