@@ -17,14 +17,18 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod ci;
 pub mod cli;
 pub mod commands;
+pub mod deps;
 pub mod error;
 pub mod fsx;
 pub mod metadata;
 pub mod names;
 pub mod semver;
 pub mod templates;
+pub mod tomlcmd;
+pub mod version;
 pub mod workflows;
 pub mod workspace;
 
@@ -39,7 +43,11 @@ cargo x: developer tools for the forgo-rust workspace
 Usage:
   cargo x new <lib|bin|wasm> <name> [--public]
   cargo x rm [<lib|bin|wasm>] <name> [--yes]
+  cargo x version <get|set|bump> <crate> ...
+  cargo x toml <get|set> <file> <key> ...
   cargo x semver <command> ...
+  cargo x ci matrix
+  cargo x deps check
   cargo x help
 
 new   Create crates/<name> (Cargo.toml, README.md and a source file) and add
@@ -52,8 +60,14 @@ rm    Remove a crate: the reverse of `new`. Without --yes (-y), only shows
       what would change. Refuses forgo_dev, crates that aren't workspace
       members, crates other crates depend on, and crates with uncommitted
       changes.
+version  A crate's version: get, set, bump. Setting it also updates the
+      requirements on it and Cargo.lock (`cargo x version help`).
+toml  Read or set a value in a TOML file, keeping the rest of it
+      (`cargo x toml help`).
 semver Versions and requirements: validate, explain, compare, sort,
       bump, matches, max, min (`cargo x semver help`).
+ci    `matrix`: the crates with a minimum Rust version, for CI.
+deps  `check`: every third-party crate in Cargo.lock is allowed.
 
 Crate names use a-z, 0-9 and _, and start with a letter.";
 
@@ -65,5 +79,9 @@ pub fn run(args: &[String], root: &Path) -> Result<String> {
         cli::Command::New { kind, name, public } => commands::new_crate(root, kind, &name, public),
         cli::Command::Rm { kind, name, yes } => commands::remove_crate(root, kind, &name, yes),
         cli::Command::Semver(args) => semver::run(&args),
+        cli::Command::Version(args) => version::run(root, &args),
+        cli::Command::Toml(args) => tomlcmd::run(root, &args),
+        cli::Command::Ci(args) => ci::run(root, &args),
+        cli::Command::Deps(args) => deps::run(root, &args),
     }
 }

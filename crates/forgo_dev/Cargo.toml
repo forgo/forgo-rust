@@ -7,4 +7,5 @@ description = "Repo-native developer tools for the forgo-rust workspace, run as 
 
 [dependencies]
 forgo_lib_semver = { path = "../forgo_lib_semver" }
+forgo_lib_toml = { path = "../forgo_lib_toml" }
 forgo_lib_yaml = { path = "../forgo_lib_yaml" }

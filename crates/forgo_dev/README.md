@@ -1,8 +1,9 @@
 # forgo_dev (`cargo x`)
 
 The workspace's own developer tool, run as `cargo x` (an alias in
-`.cargo/config.toml`). It adds and removes crates, and keeps every list
-of crates in the repository in step:
+`.cargo/config.toml`). It adds and removes crates, sets their versions,
+reads and edits TOML files, and checks the workspace for CI. It keeps
+every list of crates in the repository in step:
 
 - `[workspace].members` in the root `Cargo.toml`;
 - the `project` matrix of each job in `.github/workflows/ci.yaml`;
@@ -10,16 +11,22 @@ of crates in the repository in step:
   with `--public`);
 - `Cargo.lock`.
 
-forgo_dev depends only on forgo libraries: the workflows are edited with
-[forgo_lib_yaml](../forgo_lib_yaml), which keeps everything around the
-edited list byte for byte.
+forgo_dev depends only on forgo libraries. Manifests and `Cargo.lock` are
+read and edited with [forgo_lib_toml](../forgo_lib_toml), the workflows
+with [forgo_lib_yaml](../forgo_lib_yaml), and versions are checked with
+[forgo_lib_semver](../forgo_lib_semver). Each edit keeps everything else
+in the file byte for byte.
 
 ## Commands
 
 ```bash
 cargo x new <lib|bin|wasm> <name> [--public]
 cargo x rm [<lib|bin|wasm>] <name> [--yes]
+cargo x version <get|set|bump> <crate> ...
+cargo x toml <get|set> <file> <key> ...
 cargo x semver <validate|explain|compare|sort|bump|matches|max|min> ...
+cargo x ci matrix
+cargo x deps check
 cargo x help
 ```
 
@@ -39,8 +46,9 @@ Created crates/forgo_lib_widgets (lib, public):
 
 - Writes `Cargo.toml`, `README.md` and `src/lib.rs` (or `src/main.rs`)
   under `crates/<name>`, with edition 2024 and `publish = false`.
-- Adds `crates/<name>` to the workspace members, kept sorted, one per
-  line.
+- Adds `crates/<name>` to the workspace members, kept sorted and in the
+  array's own style (one per line, or on one line), with each member's
+  comments.
 - Adds the name to every CI matrix list, kept sorted, in the list's own
   style (`[a, b]` or `- a` lines).
 - With `--public`, sets `publish = true` and adds the crate to the release
@@ -67,7 +75,8 @@ Without `--yes` (`-y`), `rm` only reports what it would do. It refuses:
 - anything that isn't a workspace member at `crates/<name>`;
 - a crate other crates depend on: workspace members (from
   `cargo metadata`), and crates under `crates/` outside the workspace,
-  such as benchmark crates, with a `path = "../<name>"` dependency;
+  such as benchmark crates, with a path dependency on it (in any of their
+  dependency tables);
 - a crate with uncommitted changes (`git status`). Files exactly as
   `cargo x new` wrote them don't count, so a crate can be removed right
   after it was created.
@@ -76,6 +85,74 @@ When the crate was the release workflow's `default`, `default` moves to
 the first remaining choice. Lines in `.github` that still mention the
 crate (a `matrix.project == '<name>'` condition, a path) are listed
 afterwards, to check by hand.
+
+### `cargo x version`
+
+A crate's version, checked as Semantic Versioning 2.0.0:
+
+```console
+$ cargo x version get forgo_lib_toml
+0.0.0
+$ cargo x version set forgo_lib_toml 0.1.0
+forgo_lib_toml: 0.0.0 → 0.1.0
+  update crates/forgo_lib_toml/Cargo.toml
+  update Cargo.lock
+$ cargo x version bump forgo_lib_toml prerelease rc
+forgo_lib_toml: 0.1.0 → 0.1.1-rc.0
+  update crates/forgo_lib_toml/Cargo.toml
+  update Cargo.lock
+$ cargo x version set forgo_lib_toml v1.0.0
+error: `v1.0.0` isn't a version: unexpected character 'v' in the major version at byte 0
+```
+
+- `set` and `bump` keep the workspace consistent. Every path dependency
+  on the crate whose version requirement the new version wouldn't meet
+  gets the new version as its requirement: in members, in crates outside
+  the workspace, and in `[workspace.dependencies]`. Requirements it still
+  meets are left alone. The crate's entry in `Cargo.lock` changes with
+  it, and `cargo metadata --locked` checks the result.
+- A version inherited from `[workspace.package]`
+  (`version.workspace = true`) is set there, for every crate that
+  inherits it.
+- `bump` takes `major`, `minor`, `patch`, `premajor`, `preminor`,
+  `prepatch`, `prerelease` or `release`. The pre-release ones take an
+  identifier (`rc`, `beta`).
+- `--dry-run` shows the changes and makes none.
+
+Releases use it: a version changes by pull request, and the release
+workflow only checks that the crate's version is the one being released
+(see [Releasing](#releasing)).
+
+### `cargo x toml`
+
+Any value in any TOML file, by key:
+
+```console
+$ cargo x toml get Cargo.toml workspace.members[0]
+crates/forgo
+$ cargo x toml get crates/forgo_dev/Cargo.toml dependencies.forgo_lib_toml
+{ path = "../forgo_lib_toml" }
+$ cargo x toml set crates/forgo_dev/Cargo.toml package.edition '"2024"'
+$ cargo x toml set --string crates/forgo_dev/Cargo.toml package.license MIT
+```
+
+- Keys are TOML keys, dotted for nested tables (`"quoted"` when needed),
+  with `[N]` for an array item: `package[3].version` in a `Cargo.lock`.
+- `get` prints a string as its text and anything else as TOML. It exits
+  with code 1 when the key isn't set.
+- `set` takes a TOML value (`'"text"'`, `42`, `true`, `[1, 2]`), or a
+  string with `--string`. It makes missing tables, keeps the comments
+  and layout of the rest of the file, and writes it atomically.
+
+### `cargo x ci` and `cargo x deps`
+
+- `cargo x ci matrix` prints the crates that declare a minimum Rust
+  version, as a GitHub Actions matrix. The CI's `msrv` job builds each
+  one with its own version:
+  `{"include":[{"crate":"forgo_lib_toml","msrv":"1.88"}, …]}`.
+- `cargo x deps check` makes sure every third-party crate in `Cargo.lock`
+  (one with a `source`) is listed in `.github/allowed-dependencies.txt`.
+  It exits with code 1 if not.
 
 ### `cargo x semver`
 
@@ -146,17 +223,24 @@ was, `Cargo.lock` included (`tests/commands.rs` checks this).
 
 ## Library
 
-The binary is a thin wrapper around `forgo_dev::run(args, root)`, which
-returns the report or an `Error` (`Usage` for a wrong command line, exit
-code 2; `Failed` otherwise, exit code 1). Each edit is also a pure
-function from text to text:
+The binary is a thin wrapper around `forgo_dev::run(args, root)`. It
+returns the report, or an `Error`:
 
-| Module | Edits |
+| Error | Meaning | Exit code |
+|---|---|---:|
+| `Usage` | a wrong command line | 2 |
+| `Unmet` | a check didn't hold (a key isn't set, a dependency isn't allowed); the report is the output | 1 |
+| `Failed` | anything else | 1 |
+
+| Module | Does |
 |---|---|
-| `workspace` | `add_member`, `remove_member`, `members` |
-| `workflows` | `edit_ci_matrix`, `edit_release_options`, `mentions` |
-| `templates` | the files `new` writes |
+| `workspace` | `add_member`, `remove_member`, `members` (pure functions from text to text); reading manifests and their dependency tables |
+| `workflows` | `edit_ci_matrix`, `edit_release_options`, `mentions` (text to text) |
+| `version` | `cargo x version` |
+| `tomlcmd` | `cargo x toml` |
+| `ci`, `deps` | `cargo x ci matrix`, `cargo x deps check` |
 | `semver` | `cargo x semver` |
+| `templates` | the files `new` writes |
 | `fsx` | `Plan`: file changes applied together |
 | `metadata` | workspace packages from `cargo metadata` |
 
@@ -173,6 +257,8 @@ cargo test -p forgo_dev
 | `cli` | command lines and names |
 | `semver` | every `cargo x semver` command, text and JSON, exit codes |
 | `commands` | `new` and `rm` on scratch workspaces: byte-exact round trips, dry runs, every refusal, uncommitted changes |
+| `manifests` | `version` (inherited versions, requirements, Cargo.lock checked by `cargo metadata --locked`, every bump), `toml`, `ci matrix`, `deps check` on scratch workspaces |
+| `repo_workflows` | this repository's own workflows: crates can be added to and removed from their lists, byte for byte |
 
 CI runs them on Linux and Windows.
 
@@ -227,10 +313,12 @@ wasm-bindgen = { version = "0.2", optional = true }
 ## Dependencies
 
 The workspace has no third-party dependencies. CI checks `Cargo.lock`
-against `.github/allowed-dependencies.txt`, which lists only wasm-bindgen
-and the crates it pulls in; adding anything else is a deliberate edit to
-that file. Benchmark crates (`crates/*_bench`) have their own workspace
-and lockfile.
+against `.github/allowed-dependencies.txt` with `cargo x deps check`. The
+list holds only wasm-bindgen and the crates it pulls in, so adding
+anything else is a deliberate edit to that file. Benchmark crates
+(`crates/*_bench`) have their own workspace and lockfile. The daily
+security audit (`.github/workflows/audit.yaml`) checks every lockfile,
+theirs included, and opens an issue for each new advisory.
 
 ## Checks
 
@@ -250,3 +338,20 @@ or per project, as CI runs them: `cargo make fmt-check-project <crate>`,
 - [ ] README says what the crate is for
 - [ ] No new third-party dependencies (or `.github/allowed-dependencies.txt` updated on purpose)
 - [ ] `fmt`, `clippy -D warnings`, docs and tests pass
+
+## Releasing
+
+`.github/workflows/release.yaml` publishes a crate whose version is
+already merged:
+
+1. Open a pull request with `cargo x version set <crate> <version>` (or
+   `bump`), and merge it.
+2. Run the Release workflow with the crate and that version. It's a dry
+   run by default: it checks that the version is valid and is the
+   crate's, then tests and packages the crate from the locked
+   dependencies.
+3. Run it again with `dry_run` off to publish to crates.io and create a
+   GitHub release tagged `<crate>@<version>` at that commit.
+
+The workflow's inputs reach the shell only as environment variables, and
+the crates.io token is set only on the publish step.

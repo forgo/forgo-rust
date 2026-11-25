@@ -31,9 +31,26 @@ impl Plan {
         }
     }
 
-    /// Replace the contents of an existing file.
+    /// Replace the contents of an existing file (again, if the plan
+    /// already edits it).
     pub fn edit(&mut self, path: PathBuf, contents: String) {
-        self.edits.push((path, contents));
+        match self.edits.iter_mut().find(|(p, _)| *p == path) {
+            Some(edit) => edit.1 = contents,
+            None => self.edits.push((path, contents)),
+        }
+    }
+
+    /// The new contents the plan gives an existing file, if it edits it.
+    pub fn edited(&self, path: &Path) -> Option<&str> {
+        self.edits
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, c)| c.as_str())
+    }
+
+    /// Whether the plan changes nothing.
+    pub fn is_empty(&self) -> bool {
+        self.edits.is_empty() && self.creates.is_empty() && self.remove.is_none()
     }
 
     /// Create a new file (and its directories).

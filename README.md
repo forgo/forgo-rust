@@ -44,8 +44,10 @@ forgo-rust/
 - [cargo-make](https://github.com/sagiegurari/cargo-make)
 - [cargo-watch](https://github.com/watchexec/cargo-watch)
 - [cargo-audit](https://github.com/RustSec/rustsec/tree/main/cargo-audit)
-- [sem-tool](https://github.com/canardleteer/sem-tool)
-- [toml-cli](https://github.com/gnprice/toml-cli)
+
+Versions, TOML edits and release checks need no other tools: `cargo x`
+(the workspace's own [forgo_dev](crates/forgo_dev)) does them with the
+forgo libraries.
 
 ## Building the Workspace
 

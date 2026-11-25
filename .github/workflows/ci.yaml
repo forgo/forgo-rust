@@ -30,25 +30,40 @@ jobs:
       - name: Run documentation check
         run: cargo make doc-check-project ${{ matrix.project }}
 
-  msrv:
-    # The libraries that declare a minimum supported Rust version
-    # (`rust-version` in their Cargo.toml) must still build with it. The
-    # matrix key isn't `project`, so `cargo x new` doesn't add every crate.
+  msrv-matrix:
+    # The crates that declare a minimum supported Rust version
+    # (`rust-version`, or inherited from [workspace.package]), from
+    # `cargo x ci matrix`.
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        crate:
-          - forgo_lib_semver
-          - forgo_lib_toml
-          - forgo_lib_yaml
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Build ${{ matrix.crate }} with its minimum supported Rust version
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: List the crates and their minimum Rust versions
+        id: matrix
+        run: echo "matrix=$(cargo run --quiet --locked -p forgo_dev -- ci matrix)" >> "$GITHUB_OUTPUT"
+
+  msrv:
+    # Each of those crates must still build with its minimum Rust version.
+    needs: msrv-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJSON(needs.msrv-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Build ${{ matrix.crate }} with Rust ${{ matrix.msrv }}
+        env:
+          CRATE: ${{ matrix.crate }}
+          MSRV: ${{ matrix.msrv }}
         run: |
-          msrv=$(grep -m1 '^rust-version' "crates/${{ matrix.crate }}/Cargo.toml" | cut -d '"' -f 2)
-          rustup toolchain install "$msrv" --profile minimal
-          cargo +"$msrv" check -p "${{ matrix.crate }}"
+          rustup toolchain install "$MSRV" --profile minimal
+          cargo +"$MSRV" check -p "$CRATE"
 
   test:
     runs-on: ubuntu-latest
@@ -105,21 +120,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Check Cargo.lock for third-party crates that aren't allowed
-        run: |
-          awk '
-            FNR == NR { sub(/#.*/, ""); gsub(/[ \t\r]/, ""); if ($0 != "") allowed[$0] = 1; next }
-            /^\[\[package\]\]/ { name = "" }
-            /^name = / { name = $3; gsub(/"/, "", name) }
-            /^source = / && !(name in allowed) {
-              print "Cargo.lock: " name " is not in .github/allowed-dependencies.txt"
-              bad = 1
-            }
-            END { exit bad }
-          ' .github/allowed-dependencies.txt Cargo.lock
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
       - name: Check that Cargo.lock is up to date
         run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: Check Cargo.lock for third-party crates that aren't allowed
+        run: cargo run --quiet --locked -p forgo_dev -- deps check

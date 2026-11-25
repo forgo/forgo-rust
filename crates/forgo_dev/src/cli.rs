@@ -60,6 +60,14 @@ pub enum Command {
     },
     /// `semver ...`: the arguments after `semver`.
     Semver(Vec<String>),
+    /// `version ...`: the arguments after `version`.
+    Version(Vec<String>),
+    /// `toml ...`: the arguments after `toml`.
+    Toml(Vec<String>),
+    /// `ci ...`: the arguments after `ci`.
+    Ci(Vec<String>),
+    /// `deps ...`: the arguments after `deps`.
+    Deps(Vec<String>),
     /// `help`, `--help` or `-h`.
     Help,
 }
@@ -121,6 +129,10 @@ pub fn parse_args(args: &[String]) -> Result<Command> {
             })
         }
         "semver" => Ok(Command::Semver(args[1..].to_vec())),
+        "version" => Ok(Command::Version(args[1..].to_vec())),
+        "toml" => Ok(Command::Toml(args[1..].to_vec())),
+        "ci" => Ok(Command::Ci(args[1..].to_vec())),
+        "deps" => Ok(Command::Deps(args[1..].to_vec())),
         other => usage(&format!("unknown command `{other}`")),
     }
 }

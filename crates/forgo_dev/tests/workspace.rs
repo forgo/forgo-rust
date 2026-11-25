@@ -48,9 +48,9 @@ fn lists_members() {
 }
 
 #[test]
-fn reformats_only_the_members_array() {
-    // Inline, unsorted, single-quoted, with comments: rewritten one per
-    // line, sorted; everything outside the array is kept.
+fn keeps_the_arrays_style() {
+    // On one line, unsorted, single-quoted: sorted, still on one line, each
+    // entry quoted as it was; everything outside the array is kept.
     let text = "\
 # The workspace.
 [workspace]
@@ -65,11 +65,7 @@ edition = \"2024\"
         "\
 # The workspace.
 [workspace]
-members = [
-    \"crates/a\",
-    \"crates/b\",
-    \"crates/c\",
-]  # all crates
+members = [\"crates/a\", 'crates/b', \"crates/c\"]  # all crates
 default-members = [\"crates/b\"]
 
 [workspace.package]
@@ -82,9 +78,11 @@ edition = \"2024\"
 fn comments_and_brackets_inside_the_array() {
     let text = "[workspace]\nmembers = [\n    \"crates/a\", # the [first] one\n    # \"crates/old\",\n    \"crates/b\",\n]\n";
     assert_eq!(members(text).unwrap(), ["crates/a", "crates/b"]);
+    // The entry goes with the comment on its line; the comment line above
+    // `crates/b` stays with it.
     assert_eq!(
         remove_member(text, "crates/a").unwrap().unwrap(),
-        "[workspace]\nmembers = [\n    \"crates/b\",\n]\n"
+        "[workspace]\nmembers = [\n    # \"crates/old\",\n    \"crates/b\",\n]\n"
     );
 }
 
@@ -93,7 +91,7 @@ fn default_members_is_not_members() {
     let text = "[workspace]\ndefault-members = [\"crates/a\"]\nmembers = [\"crates/a\"]\n";
     assert_eq!(
         add_member(text, "crates/b").unwrap().unwrap(),
-        "[workspace]\ndefault-members = [\"crates/a\"]\nmembers = [\n    \"crates/a\",\n    \"crates/b\",\n]\n"
+        "[workspace]\ndefault-members = [\"crates/a\"]\nmembers = [\"crates/a\", \"crates/b\"]\n"
     );
 }
 
@@ -103,7 +101,7 @@ fn only_the_workspace_table() {
     let text = "[package.metadata]\nmembers = [\"x\"]\n\n[workspace]\nmembers = [\"crates/a\"]\n";
     assert_eq!(
         add_member(text, "crates/b").unwrap().unwrap(),
-        "[package.metadata]\nmembers = [\"x\"]\n\n[workspace]\nmembers = [\n    \"crates/a\",\n    \"crates/b\",\n]\n"
+        "[package.metadata]\nmembers = [\"x\"]\n\n[workspace]\nmembers = [\"crates/a\", \"crates/b\"]\n"
     );
 }
 
@@ -130,8 +128,19 @@ fn errors_instead_of_guessing() {
     assert!(add_member(not_array, "crates/b").is_err());
     let unclosed = "[workspace]\nmembers = [\"crates/a\",\n";
     assert!(add_member(unclosed, "crates/b").is_err());
+    let not_strings = "[workspace]\nmembers = [1]\n";
+    assert!(add_member(not_strings, "crates/b").is_err());
+}
+
+#[test]
+fn escapes_are_read_and_kept() {
+    // `\\` in a basic string is one backslash; literal strings keep theirs.
     let escapes = "[workspace]\nmembers = [\"crates\\\\a\"]\n";
-    assert!(add_member(escapes, "crates/b").is_err());
-    let literal_backslash = "[workspace]\nmembers = ['crates\\a']\n";
-    assert!(add_member(literal_backslash, "crates/b").is_err());
+    assert_eq!(members(escapes).unwrap(), ["crates\\a"]);
+    assert_eq!(
+        add_member(escapes, "crates/b").unwrap().unwrap(),
+        "[workspace]\nmembers = [\"crates/b\", \"crates\\\\a\"]\n"
+    );
+    let literal = "[workspace]\nmembers = ['crates\\a']\n";
+    assert_eq!(members(literal).unwrap(), ["crates\\a"]);
 }
