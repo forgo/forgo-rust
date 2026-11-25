@@ -40,14 +40,14 @@ command = "cargo"
 args = ["fmt", "-p", "${@}", "--", "--check"]
 
 [tasks.clippy-check]
-description = "Run clippy to catch common mistakes, treating warnings as errors"
+description = "Run clippy on every target (tests and examples too), treating warnings as errors"
 command = "cargo"
-args = ["clippy", "--all", "--", "-D", "warnings"]
+args = ["clippy", "--all", "--all-targets", "--", "-D", "warnings"]
 
 [tasks.clippy-check-project]
-description = "Run clippy to catch common mistakes, treating warnings as errors"
+description = "Run clippy on every target (tests and examples too), treating warnings as errors"
 command = "cargo"
-args = ["clippy", "-p", "${@}", "--", "-D", "warnings"]
+args = ["clippy", "-p", "${@}", "--all-targets", "--", "-D", "warnings"]
 
 [tasks.doc-check-project]
 description = "Build a project's documentation, treating warnings (such as broken links) as errors"

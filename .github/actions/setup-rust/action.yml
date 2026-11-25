@@ -1,37 +1,21 @@
 name: "Setup Rust"
-description: "Sets up the Rust toolchain and caches, and installs cargo-make and cargo-audit"
+description: "Sets up the stable Rust toolchain and its cache, and installs cargo-make"
 inputs:
   cargo_make_version:
     description: "Version of cargo-make to install"
     required: false
     default: "0.37.24"
-  cargo_audit_version:
-    description: "Version of cargo-audit to install"
-    required: false
-    default: "0.21.2"
 runs:
   using: "composite"
   steps:
+    # Also restores and saves the cache (Swatinem/rust-cache): the cargo
+    # registry and git checkouts, `target`, and the tools installed into
+    # ~/.cargo/bin during the job, such as cargo-make below.
     - name: Set up Rust stable toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: stable
         components: clippy, rustfmt
-
-    - name: Cache Cargo registry, git, and build artifacts
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Cache Cargo bin (cargo-make, cargo-audit)
-      uses: actions/cache@v4
-      with:
-        path: ~/.cargo/bin
-        key: cargo-bin-${{ runner.os }}-cargo-make-${{ inputs.cargo_make_version }}-cargo-audit-${{ inputs.cargo_audit_version }}
 
     - name: Install cargo-make if not already installed
       shell: bash
@@ -43,16 +27,4 @@ runs:
           cargo install cargo-make --version "$VERSION" --locked
         else
           echo "cargo-make is already installed."
-        fi
-
-    - name: Install cargo-audit if not already installed
-      shell: bash
-      env:
-        VERSION: ${{ inputs.cargo_audit_version }}
-      run: |
-        if ! command -v cargo-audit > /dev/null; then
-          echo "Installing cargo-audit..."
-          cargo install cargo-audit --version "$VERSION" --locked
-        else
-          echo "cargo-audit is already installed."
         fi

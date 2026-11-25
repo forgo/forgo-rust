@@ -193,10 +193,8 @@ fn test_as_i64_returns_none_for_non_number() {
 
 #[test]
 fn test_as_f64_parses_float() {
-    let node = Node::Scalar(Scalar::Num {
-        text: "3.14".into(),
-    });
-    assert_eq!(node.as_f64(), Some(3.14));
+    let node = Node::Scalar(Scalar::Num { text: "2.5".into() });
+    assert_eq!(node.as_f64(), Some(2.5));
 }
 
 #[test]

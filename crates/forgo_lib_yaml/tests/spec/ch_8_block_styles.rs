@@ -12,8 +12,7 @@
 //! **Coverage:**
 //! Block scalar styles (literal, folded), block scalar headers, block collections (sequences, mappings)
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use common::Fixture;
 use forgo_lib_yaml::Doc;

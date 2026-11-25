@@ -66,7 +66,7 @@ forgo-rust/
 ├── Makefile.toml               # cargo-make tasks CI runs per crate
 ├── .cargo/config.toml          # the `cargo x` alias
 ├── .github/
-│   ├── actions/setup-rust/     # toolchain, caches, cargo-make, cargo-audit
+│   ├── actions/setup-rust/     # toolchain, cache, cargo-make
 │   ├── allowed-dependencies.txt
 │   └── workflows/
 │       ├── ci.yaml             # lint, MSRV, tests (Linux and Windows), dependencies
@@ -84,16 +84,17 @@ forgo-rust/
 ## Building and testing
 
 Prerequisites: [rustup](https://rustup.rs/), and for the tasks CI runs,
-[cargo-make](https://github.com/sagiegurari/cargo-make) and
-[cargo-audit](https://github.com/RustSec/rustsec/tree/main/cargo-audit).
-Versions, TOML edits and release checks need nothing else: `cargo x` does
-them.
+[cargo-make](https://github.com/sagiegurari/cargo-make). Versions, TOML
+edits and release checks need nothing else: `cargo x` does them. To audit a
+lockfile locally as the daily Audit workflow does, use
+[cargo-audit](https://github.com/RustSec/rustsec/tree/main/cargo-audit)
+0.22 or later (older versions can't read the advisory database).
 
 ```bash
 cargo build --workspace
 cargo test --workspace
 cargo fmt --all -- --check
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
 ```
 

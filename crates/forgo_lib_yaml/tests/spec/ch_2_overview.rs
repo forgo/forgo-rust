@@ -12,8 +12,7 @@
 //! **Coverage:**
 //! Overview examples demonstrating YAML features: collections, structures, scalars, tags, complete documents
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use common::Fixture;
 use forgo_lib_yaml::{Doc, Node};

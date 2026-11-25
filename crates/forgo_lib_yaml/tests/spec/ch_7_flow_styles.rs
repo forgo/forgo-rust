@@ -12,8 +12,7 @@
 //! **Coverage:**
 //! Alias nodes, empty nodes, flow scalars (double-quoted, single-quoted, plain), flow collections
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use common::Fixture;
 use forgo_lib_yaml::Doc;
