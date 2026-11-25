@@ -46,8 +46,15 @@ impl Plan {
         self.remove = Some(path);
     }
 
-    fn rel<'p>(&self, p: &'p Path) -> std::borrow::Cow<'p, str> {
-        p.strip_prefix(&self.root).unwrap_or(p).to_string_lossy()
+    /// `p` relative to the workspace root, with `/` separators on every
+    /// platform.
+    fn rel(&self, p: &Path) -> String {
+        let rel = p.strip_prefix(&self.root).unwrap_or(p).to_string_lossy();
+        if cfg!(windows) {
+            rel.replace('\\', "/")
+        } else {
+            rel.into_owned()
+        }
     }
 
     /// One line per change, with paths relative to the workspace root.
