@@ -109,8 +109,8 @@ impl ArrayData {
 /// [dependencies]
 /// serde = { version = "1", features = ["derive"] }
 /// "#)?;
-/// assert_eq!(doc.get(&["package", "version"]).unwrap().as_str(), Some("1.2.3"));
-/// let serde = doc.get(&["dependencies", "serde"]).unwrap().as_table().unwrap();
+/// assert_eq!(doc.get(["package", "version"]).unwrap().as_str(), Some("1.2.3"));
+/// let serde = doc.get(["dependencies", "serde"]).unwrap().as_table().unwrap();
 /// assert_eq!(serde.get("features").unwrap().as_array().unwrap().len(), 1);
 /// # Ok::<(), forgo_lib_toml::Error>(())
 /// ```
@@ -129,6 +129,57 @@ pub struct Document {
     /// Hash indexes of large tables: open addressing over a table's
     /// entries (index in [`Document::entries`] + 1; 0 is empty).
     indexes: Vec<Vec<u32>>,
+    /// The options it was parsed with (edits parse again with them).
+    pub(crate) options: ParseOptions,
+    /// Where its parts are, once an edit has needed them.
+    pub(crate) spans: Option<Box<Spans>>,
+}
+
+/// Where the parts of a document are in its text, for editing: recorded
+/// when [`crate::parse::parse_spans`] parses it.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Spans {
+    /// Per node: its value's text (strings with their quotes, arrays with
+    /// their brackets, inline tables with their braces). `(NONE, NONE)`
+    /// for tables made by headers or dotted keys, and arrays of tables.
+    pub(crate) node: Vec<(u32, u32)>,
+    /// Per entry: where it was defined (a key/value pair's whole, dotted
+    /// key; the header or the dotted key that made a table), and, for a
+    /// key/value pair, where its value ends ([`NONE`] for other entries).
+    /// Entries are made in the order of these positions.
+    pub(crate) entry: Vec<(u32, u32)>,
+    /// Per table: its section, for the root and tables with a header.
+    pub(crate) table: Vec<TableSpan>,
+}
+
+/// A table's section: its header line and the key/value lines under it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TableSpan {
+    /// Where the header (`[` or `[[`) starts; [`NONE`] for the root and
+    /// tables without a header.
+    pub(crate) header: u32,
+    /// The end of the header line (after its newline); 0 for the root.
+    pub(crate) head_end: u32,
+    /// Where the last key/value line's key starts; [`NONE`] if none.
+    pub(crate) last_key: u32,
+    /// The end of the last key/value line (after its newline), else
+    /// `head_end`.
+    pub(crate) end: u32,
+}
+
+impl TableSpan {
+    pub(crate) const NONE: TableSpan = TableSpan {
+        header: NONE,
+        head_end: NONE,
+        last_key: NONE,
+        end: NONE,
+    };
+    pub(crate) const ROOT: TableSpan = TableSpan {
+        header: NONE,
+        head_end: 0,
+        last_key: NONE,
+        end: 0,
+    };
 }
 
 /// The TOML version to parse.
@@ -159,6 +210,10 @@ pub struct ParseOptions {
     pub version: TomlVersion,
     /// The deepest nesting of arrays and inline tables (default 128).
     pub max_depth: usize,
+    /// Record where each part of the document is while parsing, for
+    /// editing (default `false`). Any document can be edited; without
+    /// this, the first edit parses the text again to find its parts.
+    pub editing: bool,
 }
 
 impl Default for ParseOptions {
@@ -166,6 +221,7 @@ impl Default for ParseOptions {
         ParseOptions {
             version: TomlVersion::V1_1,
             max_depth: 128,
+            editing: false,
         }
     }
 }
@@ -180,6 +236,23 @@ impl ParseOptions {
     /// These options with `max_depth`.
     pub fn with_max_depth(mut self, max_depth: usize) -> ParseOptions {
         self.max_depth = max_depth;
+        self
+    }
+
+    /// These options for a document that will be edited: see
+    /// [`editing`](ParseOptions::editing). Parsing takes 5 to 15% longer,
+    /// and the first edit no longer parses the document again.
+    ///
+    /// ```
+    /// use forgo_lib_toml::{Document, ParseOptions};
+    ///
+    /// let mut doc = Document::parse_with("version = \"1.0.0\"\n", &ParseOptions::default().for_editing())?;
+    /// doc.set(["version"], "1.1.0")?;
+    /// assert_eq!(doc.to_string(), "version = \"1.1.0\"\n");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn for_editing(mut self) -> ParseOptions {
+        self.editing = true;
         self
     }
 }
@@ -256,7 +329,134 @@ impl Document {
             items: Vec::with_capacity(per(64, 16)),
             datetimes: Vec::new(),
             indexes: Vec::new(),
+            options: ParseOptions::default(),
+            spans: None,
         }
+    }
+
+    /// A document holding nothing, not even a root (a stand-in while its
+    /// parts are moved).
+    pub(crate) fn placeholder() -> Document {
+        Document {
+            src: Box::from(""),
+            side: String::new(),
+            nodes: Vec::new(),
+            tables: Vec::new(),
+            arrays: Vec::new(),
+            entries: Vec::new(),
+            items: Vec::new(),
+            datetimes: Vec::new(),
+            indexes: Vec::new(),
+            options: ParseOptions::default(),
+            spans: None,
+        }
+    }
+
+    /// Move positions in the text after an edit replaced `start..end`
+    /// with `len` bytes. Starts at or after `end` move; so do ends after
+    /// `start` (an end at the point of an insertion belongs before it).
+    /// Positions inside the replaced text belong to values the edit
+    /// replaces.
+    pub(crate) fn shift(&mut self, start: usize, end: usize, len: usize) {
+        let delta = len as i64 - (end - start) as i64;
+        if delta == 0 {
+            return;
+        }
+        let (s, e) = (start as u32, end as u32);
+        let starts = |p: &mut u32| {
+            if *p != NONE && *p >= e {
+                *p = (i64::from(*p) + delta) as u32;
+            }
+        };
+        let ends = |p: &mut u32| {
+            if *p != NONE && *p >= e && (*p > s || e > s) {
+                *p = (i64::from(*p) + delta) as u32;
+            }
+        };
+        for node in &mut self.nodes {
+            if let Node::String(t) = node
+                && !t.side
+            {
+                starts(&mut t.start);
+                ends(&mut t.end);
+            }
+        }
+        for entry in &mut self.entries {
+            if !entry.key.side {
+                starts(&mut entry.key.start);
+                ends(&mut entry.key.end);
+            }
+        }
+        if let Some(spans) = &mut self.spans {
+            for (a, b) in spans.node.iter_mut().chain(&mut spans.entry) {
+                starts(a);
+                ends(b);
+            }
+            for t in &mut spans.table {
+                starts(&mut t.header);
+                ends(&mut t.head_end);
+                starts(&mut t.last_key);
+                ends(&mut t.end);
+            }
+        }
+    }
+
+    /// Put the entries made since entry `mark` (added at the ends of their
+    /// tables) in the order of where they are defined, as parsing the
+    /// text would have.
+    pub(crate) fn reorder_since(&mut self, mark: u32) {
+        let Some(spans) = self.spans.as_deref() else {
+            return;
+        };
+        for t in 0..self.tables.len() {
+            let table = &self.tables[t];
+            if table.last == NONE || table.last < mark {
+                continue;
+            }
+            // Already in order (as when the new entries are defined last)?
+            let mut e = table.first;
+            let mut ordered = true;
+            while e != NONE {
+                let next = self.entries[e as usize].next;
+                if next != NONE && spans.entry[e as usize].0 > spans.entry[next as usize].0 {
+                    ordered = false;
+                    break;
+                }
+                e = next;
+            }
+            if ordered {
+                continue;
+            }
+            let mut ids = Vec::with_capacity(table.len as usize);
+            let mut e = table.first;
+            while e != NONE {
+                ids.push(e);
+                e = self.entries[e as usize].next;
+            }
+            ids.sort_by_key(|&e| spans.entry[e as usize].0);
+            for w in ids.windows(2) {
+                self.entries[w[0] as usize].next = w[1];
+            }
+            let last = *ids.last().expect("entries");
+            self.entries[last as usize].next = NONE;
+            self.tables[t].first = ids[0];
+            self.tables[t].last = last;
+        }
+    }
+
+    /// Empty the document back to a root table, keeping its memory.
+    pub(crate) fn clear(&mut self) {
+        self.side.clear();
+        self.nodes.clear();
+        self.nodes.push(Node::Table(0));
+        self.tables.clear();
+        self.tables.push(TableData::new(Kind::Root));
+        self.arrays.clear();
+        self.entries.clear();
+        self.items.clear();
+        self.datetimes.clear();
+        self.indexes.clear();
+        self.spans = None;
     }
 
     /// After parsing: move the elements of arrays of tables to `items`.
@@ -283,7 +483,7 @@ impl Document {
         crate::parse::parse(text, &ParseOptions::default())
     }
 
-    /// Parse with options (the TOML version, the nesting limit).
+    /// Parse with options (the TOML version, the nesting limit, editing).
     pub fn parse_with(text: &str, options: &ParseOptions) -> Result<Document, Error> {
         crate::parse::parse(text, options)
     }
@@ -319,16 +519,6 @@ impl Document {
         Table { doc: self, id: 0 }
     }
 
-    /// The value at a path of keys from the root, through tables (and
-    /// not into arrays).
-    pub fn get(&self, path: &[&str]) -> Option<Value<'_>> {
-        let mut v = Value::Table(self.root());
-        for key in path {
-            v = v.as_table()?.get(key)?;
-        }
-        Some(v)
-    }
-
     /// The source text the document was parsed from.
     pub fn source(&self) -> &str {
         &self.src
@@ -348,6 +538,13 @@ impl Document {
     /// The node for `key` in table `t`.
     #[inline]
     pub(crate) fn find(&self, src: &str, t: u32, key: &[u8]) -> Option<u32> {
+        self.find_entry(src, t, key)
+            .map(|e| self.entries[e as usize].node)
+    }
+
+    /// The entry for `key` in table `t`.
+    #[inline]
+    pub(crate) fn find_entry(&self, src: &str, t: u32, key: &[u8]) -> Option<u32> {
         let table = &self.tables[t as usize];
         if table.index == NONE {
             let mut e = table.first;
@@ -356,7 +553,7 @@ impl Document {
                 if (entry.key.end - entry.key.start) as usize == key.len()
                     && same(self.key_bytes(src, entry.key), key)
                 {
-                    return Some(entry.node);
+                    return Some(e);
                 }
                 e = entry.next;
             }
@@ -371,12 +568,34 @@ impl Document {
                 n => {
                     let e = &self.entries[n as usize - 1];
                     if same(self.key_bytes(src, e.key), key) {
-                        return Some(e.node);
+                        return Some(n - 1);
                     }
                 }
             }
             slot = (slot + 1) & mask;
         }
+    }
+
+    /// Table `t`'s first entry ([`NONE`] when it is empty).
+    pub(crate) fn first_entry(&self, t: u32) -> u32 {
+        self.tables[t as usize].first
+    }
+
+    /// How many keys table `t` has.
+    pub(crate) fn table_len(&self, t: u32) -> usize {
+        self.tables[t as usize].len as usize
+    }
+
+    /// Table `t`'s entries (indexes into `entries`), in order.
+    pub(crate) fn entry_ids(&self, t: u32) -> impl Iterator<Item = u32> + '_ {
+        let mut e = self.tables[t as usize].first;
+        std::iter::from_fn(move || {
+            (e != NONE).then(|| {
+                let id = e;
+                e = self.entries[e as usize].next;
+                id
+            })
+        })
     }
 
     /// The node for the key `k` (text of this document) in table `t`.
@@ -461,7 +680,7 @@ impl Document {
         &self.items[a.start as usize..(a.start + a.len) as usize]
     }
 
-    fn value(&self, node: u32) -> Value<'_> {
+    pub(crate) fn value(&self, node: u32) -> Value<'_> {
         match self.nodes[node as usize] {
             Node::String(t) => Value::String(self.text(t)),
             Node::Integer(i) => Value::Integer(i),
@@ -575,8 +794,8 @@ impl<'a> Value<'a> {
 /// A table in a [`Document`]: its keys in the order they were defined.
 #[derive(Clone, Copy)]
 pub struct Table<'a> {
-    doc: &'a Document,
-    id: u32,
+    pub(crate) doc: &'a Document,
+    pub(crate) id: u32,
 }
 
 impl<'a> Table<'a> {

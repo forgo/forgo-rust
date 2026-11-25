@@ -180,7 +180,7 @@ fn is_array_of_tables(v: &Item) -> bool {
 }
 
 /// A value on one line (inline tables and arrays).
-fn inline(out: &mut String, v: &Item) {
+pub(crate) fn inline(out: &mut String, v: &Item) {
     match v {
         Item::String(s) => string(out, s),
         Item::Integer(i) => {

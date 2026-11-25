@@ -5,10 +5,47 @@
 //! the others are decoded into the document's side buffer.
 
 use crate::datetime::{self, DtError};
-use crate::doc::{ArrayData, Document, Kind, NONE, Node, ParseOptions, Text, TomlVersion};
+use crate::doc::{
+    ArrayData, Document, Kind, NONE, Node, ParseOptions, Spans, TableSpan, Text, TomlVersion,
+};
 use crate::error::{Error, ErrorKind};
 
 pub(crate) fn parse(src: &str, options: &ParseOptions) -> Result<Document, Error> {
+    run(src, options, options.editing)
+}
+
+/// Parse and record where each part of the document is (for editing).
+pub(crate) fn parse_spans(src: &str, options: &ParseOptions) -> Result<Document, Error> {
+    run(src, options, true)
+}
+
+/// Parse a document's own text again, recording positions, in its own
+/// memory (for the first edit of a document parsed without them).
+pub(crate) fn reparse_spans(doc: &mut Document) -> Result<(), Error> {
+    let src = std::mem::replace(&mut doc.src, Box::from(""));
+    let options = doc.options;
+    let mut old = std::mem::replace(doc, Document::placeholder());
+    old.clear();
+    let mut new = run_in(old, &src, &options, true)?;
+    new.src = src;
+    *doc = new;
+    Ok(())
+}
+
+fn run(src: &str, options: &ParseOptions, spans: bool) -> Result<Document, Error> {
+    let mut doc = run_in(Document::empty(src), src, options, spans)?;
+    doc.src = src.into();
+    Ok(doc)
+}
+
+/// Parse `src` into `doc` (a root and nothing else), without setting its
+/// text.
+fn run_in(
+    doc: Document,
+    src: &str,
+    options: &ParseOptions,
+    spans: bool,
+) -> Result<Document, Error> {
     if src.len() >= u32::MAX as usize {
         return Err(Error::at(
             src,
@@ -23,17 +60,100 @@ pub(crate) fn parse(src: &str, options: &ParseOptions) -> Result<Document, Error
         src,
         b: src.as_bytes(),
         i: skip,
-        doc: Document::empty(src),
+        doc,
         v11: options.version == TomlVersion::V1_1,
         max_depth: options.max_depth,
         keys: Vec::new(),
         scratch: Vec::new(),
+        spans: spans.then(|| {
+            // As much room as the document's own vectors start with.
+            let per = |bytes: usize, min: usize| (src.len() / bytes).clamp(min, 1 << 20);
+            let mut table = Vec::with_capacity(per(64, 8));
+            table.push(TableSpan::ROOT);
+            Box::new(Spans {
+                node: Vec::with_capacity(per(16, 64)),
+                entry: Vec::with_capacity(per(20, 32)),
+                table,
+            })
+        }),
     };
     p.document()?;
     let mut doc = p.doc;
     doc.finish();
-    doc.src = src.into();
+    if let Some(mut spans) = p.spans {
+        spans.node.resize(doc.nodes.len(), (NONE, NONE));
+        spans.entry.resize(doc.entries.len(), (NONE, NONE));
+        spans.table.resize(doc.tables.len(), TableSpan::NONE);
+        doc.spans = Some(spans);
+    }
+    doc.options = *options;
     Ok(doc)
+}
+
+/// Parse a value at `at` of `text` (an edit of `doc`'s text, with `doc`'s
+/// positions already moved to match) into `doc`: its node, and where it
+/// ends. `depth` is how deep in arrays and inline tables it sits.
+pub(crate) fn resume_value(
+    doc: &mut Document,
+    text: &str,
+    at: usize,
+    depth: usize,
+) -> Result<(u32, usize), Error> {
+    with_parser(doc, text, at, |p| {
+        let node = p.value(depth)?;
+        Ok((node, p.i))
+    })
+}
+
+/// Parse the whole lines at `at..limit` of `text` (as [`resume_value`])
+/// into `doc`, starting in the section of table `section`.
+pub(crate) fn resume_lines(
+    doc: &mut Document,
+    text: &str,
+    at: usize,
+    section: u32,
+    limit: usize,
+) -> Result<(), Error> {
+    with_parser(doc, text, at, |p| p.lines(section, limit))
+}
+
+fn with_parser<T>(
+    doc: &mut Document,
+    text: &str,
+    at: usize,
+    f: impl FnOnce(&mut Parser) -> Result<T, Error>,
+) -> Result<T, Error> {
+    let options = doc.options;
+    let spans = doc.spans.take();
+    let mut p = Parser {
+        src: text,
+        b: text.as_bytes(),
+        i: at,
+        doc: std::mem::replace(doc, Document::placeholder()),
+        v11: options.version == TomlVersion::V1_1,
+        max_depth: options.max_depth,
+        keys: Vec::new(),
+        scratch: Vec::new(),
+        spans,
+    };
+    let r = f(&mut p);
+    *doc = p.doc;
+    if let Some(mut spans) = p.spans {
+        spans.node.resize(doc.nodes.len(), (NONE, NONE));
+        spans.entry.resize(doc.entries.len(), (NONE, NONE));
+        spans.table.resize(doc.tables.len(), TableSpan::NONE);
+        doc.spans = Some(spans);
+    }
+    r
+}
+
+/// Set `v[i]`, growing `v` with `fill` as needed.
+fn put<T: Copy>(v: &mut Vec<T>, i: u32, x: T, fill: T) {
+    let i = i as usize;
+    if v.len() <= i {
+        v.resize(i + 1, fill);
+    }
+    v[i] = x;
 }
 
 struct Parser<'s> {
@@ -48,6 +168,8 @@ struct Parser<'s> {
     keys: Vec<Text>,
     /// Items of the arrays being parsed (inner arrays above outer ones).
     scratch: Vec<u32>,
+    /// Where things are, when parsing for an edit.
+    spans: Option<Box<Spans>>,
 }
 
 /// The bytes of a bare key.
@@ -202,8 +324,13 @@ impl<'s> Parser<'s> {
     }
 
     fn document(&mut self) -> Result<(), Error> {
-        let mut section = 0u32;
-        loop {
+        self.lines(0, usize::MAX)
+    }
+
+    /// Lines from the cursor up to `limit` (or the end), starting in the
+    /// section of table `section`.
+    fn lines(&mut self, mut section: u32, limit: usize) -> Result<(), Error> {
+        while self.i < limit {
             self.ws();
             match self.peek() {
                 None => return Ok(()),
@@ -216,10 +343,30 @@ impl<'s> Parser<'s> {
                 }
                 Some(b'[') => section = self.header()?,
                 Some(_) => {
+                    let key = self.i;
                     self.keyval(section, section, 0)?;
                     self.end_of_line()?;
+                    if let Some(spans) = &mut self.spans {
+                        let mut t = spans
+                            .table
+                            .get(section as usize)
+                            .copied()
+                            .unwrap_or(TableSpan::NONE);
+                        t.last_key = key as u32;
+                        t.end = self.i as u32;
+                        put(&mut spans.table, section, t, TableSpan::NONE);
+                    }
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Record where the entry just made was defined (for editing).
+    fn defined(&mut self, at: usize) {
+        if let Some(spans) = &mut self.spans {
+            let e = (self.doc.entries.len() - 1) as u32;
+            put(&mut spans.entry, e, (at as u32, NONE), (NONE, NONE));
         }
     }
 
@@ -358,6 +505,15 @@ impl<'s> Parser<'s> {
         self.end_of_line()?;
         let r = self.open(mark, array, start);
         self.keys.truncate(mark);
+        if let (Ok(t), Some(spans)) = (&r, &mut self.spans) {
+            let span = TableSpan {
+                header: start as u32,
+                head_end: self.i as u32,
+                last_key: NONE,
+                end: self.i as u32,
+            };
+            put(&mut spans.table, *t, span, TableSpan::NONE);
+        }
         r
     }
 
@@ -372,6 +528,7 @@ impl<'s> Parser<'s> {
                 None => {
                     let (id, node) = self.doc.new_table(Kind::Implicit);
                     self.doc.insert(self.src, t, k, node);
+                    self.defined(at);
                     id
                 }
                 Some(node) => match self.doc.nodes[node as usize] {
@@ -407,6 +564,7 @@ impl<'s> Parser<'s> {
                     let a = (self.doc.arrays.len() - 1) as u32;
                     let node = self.doc.push_node(Node::Array(a));
                     self.doc.insert(self.src, t, last, node);
+                    self.defined(at);
                     Ok(el)
                 }
                 Some(node) => match self.doc.nodes[node as usize] {
@@ -436,6 +594,7 @@ impl<'s> Parser<'s> {
             None => {
                 let (id, node) = self.doc.new_table(Kind::Header);
                 self.doc.insert(self.src, t, last, node);
+                self.defined(at);
                 Ok(id)
             }
             Some(node) => match self.doc.nodes[node as usize] {
@@ -459,6 +618,27 @@ impl<'s> Parser<'s> {
     fn keyval(&mut self, t: u32, section: u32, depth: usize) -> Result<(), Error> {
         let start = self.i;
         self.ws();
+        let key_start = self.i;
+        self.keyval_inner(t, section, depth, start)?;
+        if let Some(spans) = &mut self.spans {
+            let e = (self.doc.entries.len() - 1) as u32;
+            put(
+                &mut spans.entry,
+                e,
+                (key_start as u32, self.i as u32),
+                (NONE, NONE),
+            );
+        }
+        Ok(())
+    }
+
+    fn keyval_inner(
+        &mut self,
+        t: u32,
+        section: u32,
+        depth: usize,
+        start: usize,
+    ) -> Result<(), Error> {
         let first = self.simple_key()?;
         self.ws();
         if self.peek() == Some(b'.') {
@@ -528,6 +708,7 @@ impl<'s> Parser<'s> {
                 None => {
                     let (id, node) = self.doc.new_table(Kind::Dotted(section));
                     self.doc.insert(self.src, t, k, node);
+                    self.defined(at);
                     id
                 }
                 Some(node) => match self.doc.nodes[node as usize] {
@@ -565,6 +746,20 @@ impl<'s> Parser<'s> {
     // -----------------------------------------------------------------
 
     fn value(&mut self, depth: usize) -> Result<u32, Error> {
+        let start = self.i;
+        let id = self.value_inner(depth)?;
+        if let Some(spans) = &mut self.spans {
+            put(
+                &mut spans.node,
+                id,
+                (start as u32, self.i as u32),
+                (NONE, NONE),
+            );
+        }
+        Ok(id)
+    }
+
+    fn value_inner(&mut self, depth: usize) -> Result<u32, Error> {
         let node = match self.peek() {
             Some(b'"') => {
                 let t = if self.b[self.i..].starts_with(b"\"\"\"") {

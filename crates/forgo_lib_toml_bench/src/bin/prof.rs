@@ -30,6 +30,33 @@ fn main() {
         _ => forgo_lib_toml_bench::MANIFEST.to_string(),
     };
     let secs: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+    if args.get(1).map(String::as_str) == Some("edit") {
+        let edit = |s: &str| {
+            let mut d = forgo_lib_toml::Document::parse(s).unwrap();
+            d.set(["package", "version"], "0.5.0").unwrap();
+            d.set(["dependencies", "anyhow"], "1").unwrap();
+            d.to_string()
+        };
+        let before = ALLOCS.load(Ordering::Relaxed);
+        black_box(edit(&input));
+        println!(
+            "allocations per edit: {}",
+            ALLOCS.load(Ordering::Relaxed) - before
+        );
+        let t = Instant::now();
+        let mut n = 0u64;
+        while t.elapsed() < Duration::from_secs(secs) {
+            black_box(edit(black_box(&input)));
+            n += 1;
+        }
+        if n > 0 {
+            println!(
+                "{:.2} µs per edit",
+                t.elapsed().as_secs_f64() / n as f64 * 1e6
+            );
+        }
+        return;
+    }
     let before = ALLOCS.load(Ordering::Relaxed);
     black_box(forgo_lib_toml::Document::parse(&input).unwrap());
     println!(

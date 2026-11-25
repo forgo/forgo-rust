@@ -88,7 +88,7 @@ fn order_and_kinds() {
             .unwrap()
             .is_array_of_tables()
     );
-    let e = doc.get(&["d", "e"]).unwrap().as_table().unwrap();
+    let e = doc.get(["d", "e"]).unwrap().as_table().unwrap();
     assert!(e.is_inline());
     assert_eq!(e.get("f"), Some(Value::Integer(1)));
 }

@@ -1,16 +1,22 @@
 # forgo_lib_toml
 
-[TOML](https://toml.io) 1.1 and 1.0 for Rust: read documents, build them in
-code, and write them. No dependencies, no `unsafe`.
+[TOML](https://toml.io) 1.1 and 1.0 for Rust: read documents, edit them
+in place, build them in code, and write them. No dependencies, no
+`unsafe`.
 
 - **Complete.** Passes every case of
   [toml-test](https://github.com/toml-lang/toml-test), TOML's official
   suite, for both versions. Every valid document decodes to the expected
   values, every invalid one is rejected, and every expected value encodes
   to TOML that reads back the same ([COMPLIANCE.md](COMPLIANCE.md)).
+- **Edits keep the file.** An edit changes only the text it must:
+  comments, blank lines, indentation, quoting, key order, line endings
+  and a missing final newline all stay. Each edit is checked, and one
+  that can't keep the layout is refused rather than re-rendered.
 - **Fast.** About 1.1 GB/s on a Cargo.lock: 5 times the `toml` crate, 12
   times `toml_edit`, and within 15% of the fastest, toml-spanner, which
-  uses `unsafe` ([How it compares](#how-it-compares)).
+  uses `unsafe`. Editing and writing a manifest is 5 to 7 times faster
+  than with `toml_edit` ([How it compares](#how-it-compares)).
 - **Errors say what and where:** a kind, a message, and a line and
   column.
 - **Hardened.** 1.8 million mutated documents parse without a panic or a
@@ -37,7 +43,7 @@ assert_eq!(package.get("name").unwrap().as_str(), Some("demo"));
 assert_eq!(package.get("keywords").unwrap().as_array().unwrap().len(), 2);
 
 // A path of keys from the root.
-let serde = doc.get(&["dependencies", "serde"]).unwrap().as_table().unwrap();
+let serde = doc.get(["dependencies", "serde"]).unwrap().as_table().unwrap();
 assert!(serde.is_inline());
 
 // Tables keep their keys in the order they were defined.
@@ -78,6 +84,82 @@ for (key, value) in doc.root().iter() {
 }
 # Ok::<(), forgo_lib_toml::Error>(())
 ```
+
+## Edit
+
+```rust
+use forgo_lib_toml::{Document, Item};
+
+let mut doc = Document::parse("\
+[package]
+name = \"demo\"
+version = \"0.1.0\"   # bumped by CI
+
+[dependencies]
+serde = { version = \"1\", features = [\"derive\"] }
+tokio = \"1\"
+
+[features]
+default = [
+    \"std\",
+]
+")?;
+
+doc.set(["package", "version"], "0.2.0")?;
+doc.set(["dependencies", "serde", "version"], "1.0.219")?;
+doc.set(["dependencies", "anyhow"], "1")?;
+doc.remove(["dependencies", "tokio"])?;
+doc.edit_array(["features", "default"], |items| items.push(Item::from("serde")))?;
+
+assert_eq!(doc.to_string(), "\
+[package]
+name = \"demo\"
+version = \"0.2.0\"   # bumped by CI
+
+[dependencies]
+serde = { version = \"1.0.219\", features = [\"derive\"] }
+anyhow = \"1\"
+
+[features]
+default = [
+    \"std\",
+    \"serde\",
+]
+");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+- [`Document::set`] replaces a value where it is written, or adds a key
+  after the last line of its table's section (indented like it), or into
+  its inline table. Missing tables are made with dotted keys in the
+  nearest table that exists, or as a new `[section]` under the root.
+- [`Document::remove`] removes the key/value line and the comment lines
+  directly above it, a table's `[sections]`, or an item of a list.
+- [`Document::edit_array`] changes an array as a list of items: the items
+  that stay keep their text, and in an array written one item per line,
+  their comments move with them. [`Document::edit_string_set`] keeps an
+  array of strings sorted and without duplicates, as for
+  `[workspace].members`.
+- Paths take keys and indexes: `[Seg::Key("package"), Seg::Index(3),
+  Seg::Key("version")]` reaches into a `[[package]]` array of tables.
+- [`edit_file_in_place`] reads a file, edits it, and replaces it
+  atomically (a temporary file renamed over it), only if it changed.
+
+**How edits are checked.** The new text of a value, or a new line in its
+section, is parsed where it is, in its context, by the same parser:
+syntax, duplicate keys and TOML's rules on tables are all enforced, and
+the value must read back as the one set. Removing lines or sections,
+and adding a section for a table that so far exists only as part of a
+longer `[header]`, re-parse the whole document and compare it with the
+old one: exactly the change, nothing else. An edit that fails leaves the document as it
+was. An edit that can't keep the layout returns
+`EditError::Unsupported`: for example replacing a table written as a
+`[section]` with a value, or a removal from a list that would delete a
+comment.
+
+Parse with `ParseOptions::default().for_editing()` when you'll edit: it
+records where things are while parsing (5 to 15% slower), so the first
+edit doesn't parse again. `edit_file_in_place` does this.
 
 ## Write
 
@@ -186,8 +268,23 @@ toml-spanner is faster on the lock file and the manifest by about 15%.
 It uses `unsafe` code and returns values that borrow the input, while
 forgo_lib_toml has no `unsafe` and copies the input into the document.
 
+Editing and writing, in µs, lower is better (`--bin quick -- --edit`):
+
+| Task | forgo_lib_toml | parsed for editing | toml_edit 0.25.21 |
+|---|---:|---:|---:|
+| Cargo.toml: set a version, add a dependency, write | **3.4** (4.9×) | **2.4** (7.1×) | 16.7 |
+| Cargo.lock (1 MB): set one version, write | **2,149** (6.2×) | **1,204** (11.1×) | 13,419 |
+
+Every forgo_lib_toml edit is checked as described in [Edit](#edit);
+`toml_edit` re-renders its document model.
+
 [`Document`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Document.html
 [`Table`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Table.html
 [`Array`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Array.html
 [`Value`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/enum.Value.html
 [`Item`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/enum.Item.html
+[`Document::set`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Document.html#method.set
+[`Document::remove`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Document.html#method.remove
+[`Document::edit_array`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Document.html#method.edit_array
+[`Document::edit_string_set`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Document.html#method.edit_string_set
+[`edit_file_in_place`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/fn.edit_file_in_place.html
