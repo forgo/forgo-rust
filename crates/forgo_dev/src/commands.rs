@@ -204,29 +204,21 @@ fn dependents(root: &Path, dir: &Path, name: &str) -> Result<Vec<String>> {
             if !manifest.is_file() || members.contains(&canonical(&other)) {
                 continue;
             }
-            if let Ok(text) = fs::read_to_string(&manifest)
-                && has_path_dependency(&text, name)
-            {
+            let depends = fs::read_to_string(&manifest)
+                .ok()
+                .and_then(|text| workspace::parse(&text, "").ok())
+                .is_some_and(|doc| {
+                    workspace::path_dependencies(&doc)
+                        .iter()
+                        .any(|p| canonical(&other.join(p)) == target)
+                });
+            if depends {
                 let dir_name = other.file_name().unwrap_or_default().to_string_lossy();
                 out.push(format!("crates/{dir_name} (outside the workspace)"));
             }
         }
     }
     Ok(out)
-}
-
-/// Whether a manifest has a line like `x = { path = "../<name>" }`.
-fn has_path_dependency(manifest: &str, name: &str) -> bool {
-    let targets = [
-        format!("\"../{name}\""),
-        format!("\"../{name}/\""),
-        format!("'../{name}'"),
-        format!("'../{name}/'"),
-    ];
-    manifest.lines().any(|line| {
-        let code = line.split('#').next().unwrap_or("");
-        code.contains("path") && targets.iter().any(|t| code.contains(t.as_str()))
-    })
 }
 
 fn canonical(p: &Path) -> PathBuf {

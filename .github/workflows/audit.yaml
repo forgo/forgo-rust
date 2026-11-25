@@ -1,4 +1,6 @@
-# Perform a security audit at midnight every day and check to detect advisories for crate dependencies.
+# Perform a security audit at midnight every day, and check every lockfile
+# for crates with advisories: the workspace's, and the benchmark crates' own
+# (they hold the third-party crates they compare against).
 # Each new advisory (including informal) will create an issue.
 # https://github.com/rustsec/audit-check?tab=readme-ov-file#audit-changes
 
@@ -10,8 +12,17 @@ on:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lockfile:
+          - .
+          - crates/forgo_lib_semver_bench
+          - crates/forgo_lib_toml_bench
+          - crates/forgo_lib_yaml_bench
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: ${{ matrix.lockfile }}

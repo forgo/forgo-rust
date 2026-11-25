@@ -75,6 +75,23 @@ impl Item {
     }
 }
 
+impl std::fmt::Display for Item {
+    /// The value as TOML writes it inline: `"text"`, `1.5`,
+    /// `[1, 2]`, `{ a = 1 }` (TOML 1.0 syntax).
+    ///
+    /// ```
+    /// use forgo_lib_toml::Item;
+    ///
+    /// let item = Item::table([("tags", Item::array([Item::from("a"), Item::from("b\"c")]))]);
+    /// assert_eq!(item.to_string(), r#"{ tags = ["a", "b\"c"] }"#);
+    /// ```
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut out = String::new();
+        inline(&mut out, self);
+        f.write_str(&out)
+    }
+}
+
 /// Why an [`Item`] can't be encoded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EncodeError(&'static str);

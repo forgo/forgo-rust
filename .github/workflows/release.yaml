@@ -1,5 +1,11 @@
-permissions:
-  contents: write
+# Release a crate whose version is already merged.
+#
+# Versions change by pull request (`cargo x version set <crate> <version>`,
+# which also updates the requirements on the crate and Cargo.lock). This
+# workflow only checks and publishes: the version in the crate's manifest
+# must equal the one given here, the crate must build, test and package
+# from the locked dependencies, and then (unless it's a dry run) it is
+# published to crates.io and tagged as a GitHub release of this commit.
 
 name: Release
 
@@ -8,7 +14,7 @@ on:
     inputs:
       project:
         type: choice
-        description: "Select project to release"
+        description: "Crate to release"
         required: true
         default: forgo
         options:
@@ -16,14 +22,23 @@ on:
           - forgo_lib_cli
           - forgo_lib_yaml
       version:
-        description: "Version (e.g., 1.0.0)"
+        description: "Its version, as in its Cargo.toml (e.g. 1.0.0)"
         required: true
+      dry_run:
+        type: boolean
+        description: "Check everything, publish nothing"
+        default: true
+
+permissions:
+  contents: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      # Inputs reach the shell as environment variables, never as code.
+      PROJECT: ${{ inputs.project }}
+      VERSION: ${{ inputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,34 +46,34 @@ jobs:
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
 
-      - name: Update ${{ github.event.inputs.project }}'s Cargo.toml package version
-        run: cargo=$(toml set crates/${{ github.event.inputs.project }}/Cargo.toml package.version "${{ github.event.inputs.version }}") && echo "$cargo" > crates/${{ github.event.inputs.project }}/Cargo.toml
+      - name: Build cargo x
+        run: cargo build --locked -p forgo_dev
 
-      - name: Validate ${{ github.event.inputs.project }}'s Cargo.toml package version aligns with input version
-        run: test "$(toml get -r crates/${{ github.event.inputs.project }}/Cargo.toml package.version)" = "${{ github.event.inputs.version }}"
-
-      - name: Validate ${{ github.event.inputs.project }} version is semantic
-        run: sem-tool validate "${{ github.event.inputs.version }}"
-
-      - name: Build ${{ github.event.inputs.project }} in release mode
-        run: cargo build --release -p ${{ github.event.inputs.project }}
-
-      - name: Generate ${{ github.event.inputs.project }} documentation
-        run: cargo doc --release --no-deps -p ${{ github.event.inputs.project }}
-
-      - name: Login into crates.io
-        run: echo "${CARGO_REGISTRY_TOKEN}" | cargo login
-
-      - name: "Package ${{ github.event.inputs.project }} for crates.io"
-        run: cargo package --allow-dirty
-
-      - name: "Publish ${{ github.event.inputs.project }} to crates.io"
-        run: cargo publish -p ${{ github.event.inputs.project }} --allow-dirty
-
-      - name: Create ${{ github.event.inputs.project }} GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check the version
         run: |
-          TAG="${{ github.event.inputs.project }}@${{ github.event.inputs.version }}"
-          gh release create "${TAG}" --title "${TAG}" --generate-notes
-        shell: bash
+          cargo run --quiet --locked -p forgo_dev -- semver validate "$VERSION"
+          have="$(cargo run --quiet --locked -p forgo_dev -- version get "$PROJECT")"
+          if [ "$have" != "$VERSION" ]; then
+            echo "::error::crates/$PROJECT is at $have, not $VERSION: merge the version first (cargo x version set $PROJECT $VERSION)"
+            exit 1
+          fi
+
+      - name: Test
+        run: cargo test --locked -p "$PROJECT"
+
+      - name: Package
+        run: cargo package --locked -p "$PROJECT"
+
+      - name: Publish to crates.io
+        if: ${{ !inputs.dry_run }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked -p "$PROJECT"
+
+      - name: Create the GitHub release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$PROJECT@$VERSION"
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --generate-notes
