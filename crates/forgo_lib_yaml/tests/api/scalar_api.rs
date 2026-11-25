@@ -111,9 +111,7 @@ fn test_as_i64_returns_none_for_invalid() {
 
 #[test]
 fn test_as_i64_returns_none_for_float() {
-    let scalar = Scalar::Num {
-        text: "3.14".into(),
-    };
+    let scalar = Scalar::Num { text: "2.5".into() };
     assert!(scalar.as_i64().is_none());
 }
 
@@ -124,10 +122,8 @@ fn test_as_i64_returns_none_for_non_number() {
 
 #[test]
 fn test_as_f64_parses_float() {
-    let scalar = Scalar::Num {
-        text: "3.14".into(),
-    };
-    assert_eq!(scalar.as_f64(), Some(3.14));
+    let scalar = Scalar::Num { text: "2.5".into() };
+    assert_eq!(scalar.as_f64(), Some(2.5));
 }
 
 #[test]
@@ -242,7 +238,7 @@ fn test_to_string_for_null() {
 #[test]
 fn test_to_string_preserves_number_formatting() {
     let scalar = Scalar::Num {
-        text: "3.14159".into(),
+        text: "1.25000".into(),
     };
-    assert_eq!(scalar.to_string(), "3.14159");
+    assert_eq!(scalar.to_string(), "1.25000");
 }

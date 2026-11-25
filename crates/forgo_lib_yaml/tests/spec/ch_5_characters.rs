@@ -12,8 +12,7 @@
 //! **Coverage:**
 //! Character set, encodings, indicators, line breaks, white space, escape sequences
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use common::Fixture;
 use forgo_lib_yaml::Doc;
@@ -811,11 +810,9 @@ fn ch_5_8_4_06_escape_at_end_of_string() {
     let input = "text: \"value\\\"\n";
     let result = Doc::from_str(input);
     // This might be a valid escaped quote, so check carefully
-    if result.is_err() {
-        // Parser rejects incomplete escape
-    } else {
-        // Parser accepts it as escaped quote
-        let doc = result.unwrap();
+    // The parser may reject the incomplete escape; if it accepts it as an
+    // escaped quote:
+    if let Ok(doc) = result {
         let output = doc.to_string().unwrap();
         assert!(output.contains("value"));
     }
@@ -863,9 +860,8 @@ fn ch_5_8_5_04_valid_surrogate_pair() {
     let input = "text: \"\\uD800\\uDC00\"\n";
     let result = Doc::from_str(input);
 
-    if result.is_ok() {
+    if let Ok(doc) = result {
         // Implementation supports surrogate pairs correctly
-        let doc = result.unwrap();
         let output = doc.to_string().unwrap();
         // Should represent U+10000 (Linear B Syllable B008 A)
         assert!(!output.is_empty());
