@@ -1,0 +1,3 @@
+# Check out text files with LF line endings on every platform: tests compare
+# files byte for byte, and `cargo x` edits keep a file's line endings.
+* text=auto eol=lf

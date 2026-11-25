@@ -826,8 +826,9 @@ impl PartialEq for Doc {
     }
 }
 
-/// An error from parsing, checking, writing, or file I/O.
+/// An error from parsing, checking, editing, writing, or file I/O.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// Reading or writing a file failed.
     Io(std::io::Error),
@@ -843,8 +844,12 @@ pub enum Error {
         /// What is wrong.
         msg: String,
     },
-    /// The document can't be written (nested too deeply).
+    /// The document can't be written: nested too deeply, or (for the
+    /// `*_preserving` methods) its source layout can't be kept.
     Emit(String),
+    /// An edit can't be applied, such as sorting a list that holds more
+    /// than strings ([`crate::try_normalize_string_list`]).
+    Edit(String),
     /// Formatting output failed.
     Fmt(std::fmt::Error),
 }
@@ -870,6 +875,7 @@ impl fmt::Display for Error {
             Error::Parse(s) => write!(f, "Parse error: {s}"),
             Error::Syntax { line, col, msg } => write!(f, "Parse error at {line}:{col}: {msg}"),
             Error::Emit(s) => write!(f, "Emit error: {s}"),
+            Error::Edit(s) => write!(f, "Edit error: {s}"),
             Error::Fmt(e) => write!(f, "Format error: {e}"),
         }
     }
@@ -1099,6 +1105,32 @@ impl Doc {
         self.render()
     }
 
+    /// [`Doc::to_string`] for tools that must never rewrite a whole file: a
+    /// parsed document comes back as its source text with only the edited
+    /// parts changed, or the call fails ([`Error::Emit`]) instead of
+    /// rendering everything. A document built in code is rendered.
+    ///
+    /// ```
+    /// use forgo_lib_yaml::{Doc, Node};
+    ///
+    /// let mut doc = Doc::from_str("a: 1   # one\nb: [x, y]\n")?;
+    /// doc.visit_values_mut(&["a"], |v| {
+    ///     *v.node_mut() = Node::number(2);
+    ///     true
+    /// });
+    /// assert_eq!(doc.to_string_preserving()?, "a: 2   # one\nb: [x, y]\n");
+    /// # Ok::<(), forgo_lib_yaml::Error>(())
+    /// ```
+    pub fn to_string_preserving(&self) -> Result<String, Error> {
+        self.check_emit_depth()?;
+        if self.origin.source.is_none() {
+            return self.render();
+        }
+        crate::preserve::doc_text(self).ok_or_else(|| {
+            Error::Emit("the document can't keep its source layout after this edit".into())
+        })
+    }
+
     /// The document in the emitter's layout, ignoring its source text.
     pub(crate) fn render(&self) -> Result<String, Error> {
         let mut out = String::new();
@@ -1200,10 +1232,24 @@ impl Doc {
         for d in docs {
             d.check_emit_depth()?;
         }
-        if let Some(text) = crate::preserve::stream_text(docs) {
+        if let Ok(Some(text)) = crate::preserve::stream_text(docs, false) {
             return Ok(text);
         }
         Self::render_stream(docs)
+    }
+
+    /// [`Doc::to_stream_string`] with the guarantee of
+    /// [`Doc::to_string_preserving`]: parsed documents keep their source
+    /// layout, or the call fails instead of rendering them.
+    pub fn to_stream_string_preserving(docs: &[Self]) -> Result<String, Error> {
+        for d in docs {
+            d.check_emit_depth()?;
+        }
+        match crate::preserve::stream_text(docs, true) {
+            Ok(Some(text)) => Ok(text),
+            Ok(None) => Self::render_stream(docs),
+            Err(why) => Err(Error::Emit(why)),
+        }
     }
 
     /// A stream in the emitter's layout, ignoring source text.

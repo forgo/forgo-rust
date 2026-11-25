@@ -9,6 +9,9 @@ version = "0.0.0"
 [[package]]
 name = "forgo_dev"
 version = "0.1.0"
+dependencies = [
+ "forgo_lib_yaml",
+]
 
 [[package]]
 name = "forgo_lib_cli"

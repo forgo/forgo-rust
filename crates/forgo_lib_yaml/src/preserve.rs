@@ -45,21 +45,36 @@ pub(crate) fn doc_text(doc: &Doc) -> Option<String> {
 
 /// A stream of documents, each keeping its source layout where it has
 /// one, with `---` or `...` added where documents now meet differently.
-/// `None` when no document has a source, or the result doesn't read back.
-pub(crate) fn stream_text(docs: &[Doc]) -> Option<String> {
+///
+/// - `Ok(None)`: no document has a source (the caller renders them).
+/// - Not `strict`: a document whose layout can't be kept is rendered, and
+///   `Ok(None)` is returned when the result doesn't read back.
+/// - `strict`: those cases are errors instead; documents without a source
+///   are still rendered (they have no layout to keep).
+pub(crate) fn stream_text(docs: &[Doc], strict: bool) -> Result<Option<String>, String> {
     if docs.iter().all(|d| d.origin.source.is_none()) {
-        return None;
+        return Ok(None);
     }
     // Untouched documents that make up a whole source: that source.
     if let Some(text) = whole_source(docs) {
-        return Some(text.to_string());
+        return Ok(Some(text.to_string()));
     }
     let mut out = String::new();
     let mut prev_from_source = false;
     for (i, d) in docs.iter().enumerate() {
         let (text, from_source) = match doc_text(d) {
             Some(t) => (t, true),
-            None => (d.render().ok()?, false),
+            None if strict && d.origin.source.is_some() => {
+                return Err(format!(
+                    "document {} can't keep its source layout after this edit",
+                    i + 1
+                ));
+            }
+            None => match d.render() {
+                Ok(t) => (t, false),
+                Err(e) if strict => return Err(e.to_string()),
+                Err(_) => return Ok(None),
+            },
         };
         // Documents that follow each other in the same source already
         // carry what separates them.
@@ -90,11 +105,19 @@ pub(crate) fn stream_text(docs: &[Doc]) -> Option<String> {
         }
         out.push_str(&text);
     }
-    let back = compose(&out, &crate::ParseOptions::default(), false).ok()?;
-    let back: Vec<Doc> = back.into_iter().filter(|d| !d.is_placeholder()).collect();
+    let back = compose(&out, &crate::ParseOptions::default(), false).ok();
+    let back: Vec<Doc> = back
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|d| !d.is_placeholder())
+        .collect();
     let docs: Vec<&Doc> = docs.iter().filter(|d| !d.is_placeholder()).collect();
     let ok = back.len() == docs.len() && docs.iter().zip(&back).all(|(d, b)| equivalent_doc(d, b));
-    ok.then_some(out)
+    match (ok, strict) {
+        (true, _) => Ok(Some(out)),
+        (false, true) => Err("the documents don't read back as written after this edit".into()),
+        (false, false) => Ok(None),
+    }
 }
 
 /// The source of `docs` when they are all of it, untouched and in order.
@@ -152,11 +175,19 @@ pub(crate) fn equivalent_doc(doc: &Doc, back: &Doc) -> bool {
 
 fn equivalent(a: &Elem, b: &Elem) -> bool {
     let (m, n) = (&a.meta, &b.meta);
+    // An empty collection can only be written in flow style (`[]`, `{}`).
+    let emptied = m.style == Some(crate::ast::Style::Block)
+        && n.is_flow()
+        && match &a.node {
+            Node::Seq(s) => s.is_empty(),
+            Node::Map(e) => e.is_empty(),
+            _ => false,
+        };
     let meta = m.leading_comments == n.leading_comments
         && m.trailing_comment == n.trailing_comment
         && m.anchor == n.anchor
         && m.tag == n.tag
-        && (m.style.is_none() || m.style == n.style)
+        && (m.style.is_none() || m.style == n.style || emptied)
         && (m.spelling.is_none() || m.spelling == n.spelling);
     meta && match (&a.node, &b.node) {
         (Node::Seq(x), Node::Seq(y)) => {
@@ -737,7 +768,9 @@ impl Splicer<'_> {
             return Some(());
         }
         out.truncate(mark);
-        self.fresh(|em, s| em.emit_entry(k, v, at.col, true, s), out)
+        self.fresh(|em, s| em.emit_entry(k, v, at.col, true, s), out)?;
+        self.keep_missing_newline(&at, out);
+        Some(())
     }
 
     fn item(&self, it: &Elem, it0: &Elem, at: Pos, out: &mut String) -> Option<()> {
@@ -755,7 +788,20 @@ impl Splicer<'_> {
             return Some(());
         }
         out.truncate(mark);
-        self.fresh(|em, s| em.emit_item(it, at.col, true, s), out)
+        self.fresh(|em, s| em.emit_item(it, at.col, true, s), out)?;
+        self.keep_missing_newline(&at, out);
+        Some(())
+    }
+
+    /// A re-rendered entry ends with a line break; drop it if the entry
+    /// ended the source without one.
+    fn keep_missing_newline(&self, at: &Pos, out: &mut String) {
+        if at.chunk.1 == self.src.len() && !self.src.ends_with('\n') && out.ends_with('\n') {
+            out.pop();
+            if out.ends_with('\r') {
+                out.pop();
+            }
+        }
     }
 
     /// Write a changed value whose entry text (key or `-`) starts at

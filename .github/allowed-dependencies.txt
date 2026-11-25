@@ -1,0 +1,22 @@
+# Third-party crates allowed in the root Cargo.lock (checked in CI).
+#
+# The workspace has no third-party dependencies: forgo libraries use only
+# std, and forgo_dev only forgo libraries. The one exception is
+# wasm-bindgen, for crates made with `cargo x new wasm`; these are the
+# crates it pulls in. Adding a name here is a deliberate decision.
+#
+# Benchmark crates (crates/*_bench) have their own workspaces and
+# lockfiles, so their comparison crates don't appear here.
+
+bumpalo
+cfg-if
+once_cell
+proc-macro2
+quote
+rustversion
+syn
+unicode-ident
+wasm-bindgen
+wasm-bindgen-macro
+wasm-bindgen-macro-support
+wasm-bindgen-shared

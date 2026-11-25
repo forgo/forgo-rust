@@ -52,6 +52,11 @@ env:
   a file, sorted and deduplicated, in one call.
 - `Doc::from_stream` and `Doc::to_stream_string` handle multi-document
   files.
+- `Doc::to_string_preserving` and `Doc::to_stream_string_preserving`
+  return an error rather than re-render a document whose layout an edit
+  can't keep, for tools that must never reformat a file.
+  `try_normalize_string_list` likewise refuses a list with items that
+  aren't strings, rather than converting them.
 
 ## Read values
 
@@ -136,7 +141,8 @@ assert_eq!(err.to_string(), "Parse error at 1:5: mapping values are not allowed 
 - Errors carry a 1-based line and column.
 - `Doc::from_slice` and `events_from_bytes` read UTF-8, UTF-16 or
   UTF-32, with or without a byte order mark (spec §5.2).
-- `ParseOptions::max_depth` (512 by default) turns hostile nesting into
+- `ParseOptions::max_depth` (512 by default; set it with
+  `ParseOptions::default().with_max_depth(n)`) turns hostile nesting into
   an error instead of a stack overflow.
 
 ## How output is written
@@ -147,13 +153,14 @@ assert_eq!(err.to_string(), "Parse error at 1:5: mapping values are not allowed 
 | unchanged entry | its source text, with comments and blank lines |
 | changed scalar | new text in place; the rest of the line stays |
 | new or rewritten entry | in the file's indentation style |
+| emptied block list or mapping | `[]` or `{}` in its place |
 | built in code, or `reformat()` | the emitter's layout (below) |
 
 The emitter indents by two spaces, writes `- key: value` items compactly
 and keeps each node's comments, quoting, block style, anchors, tags and
 spellings (`~`, `True`, `0x1F`). Every edit is checked: the output is
 parsed again and must equal the edited document, or the whole document
-is rendered instead.
+is rendered instead (the `*_preserving` methods return an error).
 
 ## How it compares
 

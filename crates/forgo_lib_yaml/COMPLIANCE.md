@@ -79,7 +79,7 @@ Event parsers, against the suite's expected events:
 |---|---|---|
 | Spec gaps | 38 cases | all pass |
 | Robustness | 970,514 mutated inputs | no failures |
-| Editing | 1,741 edits on 320 files | all exact |
+| Editing | 1,741 edits and 211 emptied collections on 320 files | all pass |
 
 - **Spec gaps** (`tests/yaml_spec_gaps.rs`) cover rules the suite skips:
   UTF-16 and UTF-32 input, byte order marks, CR and CRLF line breaks,
@@ -95,7 +95,9 @@ Event parsers, against the suite's expected events:
   styles.
 - **Editing** (`tests/yaml_editing.rs`) changes, deletes, appends and
   renames entries one at a time, in realistic files and in every valid
-  suite case, and compares the output with the exact expected text.
+  suite case, and compares the output with the exact expected text. It
+  also empties each nested block collection without anchors: the strict
+  writer must keep the layout around it.
 
 ## Choices where the spec is open
 

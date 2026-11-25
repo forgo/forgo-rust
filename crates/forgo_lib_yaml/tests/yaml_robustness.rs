@@ -333,6 +333,6 @@ fn deep_nesting_is_an_error_not_a_crash() {
     let d = forgo_lib_yaml::Doc::from_str(&ok).unwrap();
     let out = d.to_string().unwrap();
     assert_eq!(forgo_lib_yaml::Doc::from_str(&out).unwrap(), d.clone());
-    let opts = forgo_lib_yaml::ParseOptions { max_depth: 10 };
+    let opts = forgo_lib_yaml::ParseOptions::default().with_max_depth(10);
     assert!(forgo_lib_yaml::Doc::from_str_with(&ok, &opts).is_err());
 }

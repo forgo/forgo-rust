@@ -16,6 +16,13 @@
 # https://github.com/sagiegurari/cargo-make
 # e.g. - `cargo make ci`
 
+[config]
+# Run each task once, from the workspace root. (By default cargo-make runs a
+# task in every workspace member: `test-project forgo_lib_yaml` ran the
+# same tests once per member.) The `*-project` tasks select their crate
+# with `-p`.
+default_to_workspace = false
+
 [env]
 # Automatically Extend Workspace Makefile
 # IOW - recognize tasks in a workspace context

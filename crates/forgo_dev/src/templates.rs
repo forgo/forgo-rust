@@ -1,80 +1,61 @@
-//! Templates for new crate manifests and README scaffolding, plus helpers.
+//! The files `cargo x new` writes for a crate.
 
-use std::fs;
-use std::path::Path;
+use crate::cli::Kind;
 
-use crate::util::EDITION;
+/// The Rust edition of new crates.
+pub const EDITION: &str = "2024";
 
-pub fn write_manifest_from_template(crate_path: &Path, kind: &str, name: &str, make_public: bool) {
-    let publish_val = if make_public { "true" } else { "false" };
-    let description = default_description(kind, name);
-
-    let body = match kind {
-        "lib" => TEMPLATE_LIB
-            .replace("{NAME}", name)
-            .replace("{EDITION}", EDITION)
-            .replace("{PUBLISH}", publish_val)
-            .replace("{DESCRIPTION}", &description),
-        "bin" => TEMPLATE_BIN
-            .replace("{NAME}", name)
-            .replace("{EDITION}", EDITION)
-            .replace("{PUBLISH}", publish_val)
-            .replace("{DESCRIPTION}", &description),
-        "wasm" => TEMPLATE_WASM
-            .replace("{NAME}", name)
-            .replace("{EDITION}", EDITION)
-            .replace("{PUBLISH}", publish_val)
-            .replace("{DESCRIPTION}", &description),
-        _ => unreachable!(),
+/// `Cargo.toml` for a new crate.
+pub fn manifest(kind: Kind, name: &str, public: bool) -> String {
+    let template = match kind {
+        Kind::Lib => LIB_MANIFEST,
+        Kind::Bin => BIN_MANIFEST,
+        Kind::Wasm => WASM_MANIFEST,
     };
-
-    fs::write(crate_path.join("Cargo.toml"), body).expect("write templated Cargo.toml");
+    template
+        .replace("{NAME}", name)
+        .replace("{EDITION}", EDITION)
+        .replace("{PUBLISH}", if public { "true" } else { "false" })
+        .replace("{DESCRIPTION}", &description(kind, name))
 }
 
-pub fn default_description(kind: &str, name: &str) -> String {
+fn description(kind: Kind, name: &str) -> String {
     match kind {
-        "lib" => format!("Library crate: {}", name),
-        "bin" => format!("Binary crate: {}", name),
-        "wasm" => format!("WASM library crate: {}", name),
-        _ => name.to_string(),
+        Kind::Lib => format!("Library crate: {name}"),
+        Kind::Bin => format!("Binary crate: {name}"),
+        Kind::Wasm => format!("WASM library crate: {name}"),
     }
 }
 
-pub fn scaffold_readme(crate_path: &Path, kind: &str, name: &str) {
-    let readme = crate_path.join("README.md");
-    if readme.exists() {
-        return;
-    }
-    let (tag, example_cmd) = match kind {
-        "lib" => (
+/// `README.md` for a new crate.
+pub fn readme(kind: Kind, name: &str) -> String {
+    let (tagline, example) = match kind {
+        Kind::Lib => (
             "A library crate in the Forgo monorepo.",
             format!("cargo build -p {name}"),
         ),
-        "bin" => (
+        Kind::Bin => (
             "A binary crate in the Forgo monorepo.",
             format!("cargo run -p {name} -- --help"),
         ),
-        "wasm" => (
+        Kind::Wasm => (
             "A WebAssembly library crate (cdylib + wasm-bindgen) in the Forgo monorepo.",
             format!("cargo build -p {name} --features wasm"),
         ),
-        _ => (
-            "A crate in the Forgo monorepo.",
-            format!("cargo build -p {name}"),
-        ),
     };
-
-    let body = TEMPLATE_README
-        .replace("{NAME}", name)
-        .replace("{TAGLINE}", tag)
-        .replace("{EXAMPLE_CMD}", &example_cmd);
-
-    let _ = fs::write(readme, body);
+    format!("# {name}\n\n{tagline}\n\n## Quick start\n\n```bash\n{example}\n```\n")
 }
 
-/* =============================== Templates =============================== */
+/// The source file of a new crate, as (path within the crate, contents).
+pub fn source(kind: Kind) -> (&'static str, &'static str) {
+    match kind {
+        Kind::Lib => ("src/lib.rs", LIB_RS),
+        Kind::Bin => ("src/main.rs", MAIN_RS),
+        Kind::Wasm => ("src/lib.rs", WASM_RS),
+    }
+}
 
-const TEMPLATE_LIB: &str = r#"[package]
+const LIB_MANIFEST: &str = r#"[package]
 name = "{NAME}"
 version = "0.0.0"
 edition = "{EDITION}"
@@ -84,15 +65,10 @@ description = "{DESCRIPTION}"
 repository = "https://github.com/forgo/forgo-rust"
 readme = "README.md"
 
-[features]
-default = []
-# serde = ["dep:serde"]
-
 [dependencies]
-# serde = { version = "1", features = ["derive"], optional = true }
 "#;
 
-const TEMPLATE_BIN: &str = r#"[package]
+const BIN_MANIFEST: &str = r#"[package]
 name = "{NAME}"
 version = "0.0.0"
 edition = "{EDITION}"
@@ -103,14 +79,13 @@ repository = "https://github.com/forgo/forgo-rust"
 readme = "README.md"
 
 [dependencies]
-# forgo_lib_something = { path = "../forgo_lib_something" }
 
 [[bin]]
 name = "{NAME}"
 path = "src/main.rs"
 "#;
 
-const TEMPLATE_WASM: &str = r#"[package]
+const WASM_MANIFEST: &str = r#"[package]
 name = "{NAME}"
 version = "0.0.0"
 edition = "{EDITION}"
@@ -131,12 +106,33 @@ wasm = ["dep:wasm-bindgen"]
 wasm-bindgen = { version = "0.2", optional = true }
 "#;
 
-const TEMPLATE_README: &str = r#"# {NAME}
+const LIB_RS: &str = r#"pub fn add(left: u64, right: u64) -> u64 {
+    left + right
+}
 
-{TAGLINE}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-## Quick start
+    #[test]
+    fn it_works() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+}
+"#;
 
-```bash
-{EXAMPLE_CMD}
+const MAIN_RS: &str = r#"fn main() {
+    println!("Hello, world!");
+}
+"#;
+
+const WASM_RS: &str = r#"#[cfg(feature = "wasm")]
+use wasm_bindgen::prelude::*;
+
+/// Adds two numbers; exported to JavaScript with the `wasm` feature.
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
+pub fn add(left: u32, right: u32) -> u32 {
+    left + right
+}
 "#;

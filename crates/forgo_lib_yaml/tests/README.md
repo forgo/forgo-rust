@@ -15,7 +15,7 @@ fail instead when `CI` or `YAML_TEST_SUITE_REQUIRED` is set.
 | `yaml_test_suite` | 402 official cases | 7 checks, all 100% |
 | `yaml_spec_gaps` | 38 hand-made cases | all pass |
 | `yaml_robustness` | 970,514 mutated inputs | no failures |
-| `yaml_editing` | 320 files, 1,741 edits | all exact |
+| `yaml_editing` | 320 files: 1,741 edits, 211 emptied collections | all pass |
 
 **`yaml_test_suite`** runs the official
 [yaml-test-suite](https://github.com/yaml/yaml-test-suite), release
@@ -58,8 +58,11 @@ byte order mark, …) or a deletion. On every result it checks:
 
 **`yaml_editing`** edits each document in many ways, one edit at a time,
 and compares the output with the exact expected text: only the edited
-entry may change. The inputs are the files in `editing/` (also with CRLF
-line breaks and without a final line break) and every valid suite case.
+entry may change. It also empties each nested block collection (one
+without anchors), which must be written `[]` or `{}` in its place by the
+strict writer (`Doc::to_stream_string_preserving`). The inputs are the
+files in `editing/` (also with CRLF line breaks and without a final line
+break) and every valid suite case.
 
 ## Behaviour
 
