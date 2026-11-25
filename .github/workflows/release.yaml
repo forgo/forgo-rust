@@ -3,9 +3,10 @@
 # Versions change by pull request (`cargo x version set <crate> <version>`,
 # which also updates the requirements on the crate and Cargo.lock). This
 # workflow only checks and publishes: the version in the crate's manifest
-# must equal the one given here, the crate must build, test and package
-# from the locked dependencies, and then (unless it's a dry run) it is
-# published to crates.io and tagged as a GitHub release of this commit.
+# must equal the one given here, the crate must pass its tests (with its
+# compliance suites) and package from the locked dependencies, and then
+# (unless it's a dry run) it is published to crates.io and tagged as a
+# GitHub release of this commit.
 
 name: Release
 
@@ -58,7 +59,21 @@ jobs:
             exit 1
           fi
 
+      - name: Fetch the crate's compliance suites
+        # As the CI test job does: the official test suites a crate checks
+        # itself against aren't committed.
+        run: |
+          for script in crates/"$PROJECT"/scripts/fetch-*.sh; do
+            [ -e "$script" ] || continue
+            "$script"
+          done
+
       - name: Test
+        env:
+          # Compliance tests fail instead of skipping without their data.
+          YAML_TEST_SUITE_REQUIRED: "1"
+          SEMVER_NODE_REQUIRED: "1"
+          TOML_TEST_SUITE_REQUIRED: "1"
         run: cargo test --locked -p "$PROJECT"
 
       - name: Package
