@@ -10,6 +10,8 @@ default) and [TOML 1.0.0](https://toml.io/en/v1.0.0).
 | Encoder | the expected values of every valid case, both versions | all read back the same |
 | Robustness | 1.8 million truncated and edited documents | no panics or hangs; all round-trip |
 | Editing | 8,160 edits at every path of every valid toml-test document | 7,508 made, each checked independently; 652 refused, none wrong |
+| toml-test's own runner | the Go runner, built at the pinned commit, on a decoder and encoder | all pass, both versions |
+| Other parsers | 50,958 mutated documents, against `toml`, `toml_edit`, toml-spanner | same values wherever both accept; every other difference is theirs (below) |
 
 ## toml-test
 
@@ -38,6 +40,44 @@ for each version (`files-toml-1.1.0` and `files-toml-1.0.0`).
 - **Encoder.** The expected values of each valid case are built as an
   `Item`, encoded, and parsed back as TOML 1.0 (so the output suits
   either version). The values must be equal again under the same rules.
+
+## toml-test's own runner
+
+The tests above read the suite themselves. As an independent check, the
+bench crate builds toml-test's own runner (Go) from the same commit and
+runs it on two small programs around forgo_lib_toml: a decoder (TOML in,
+tagged JSON out) and an encoder (tagged JSON in, TOML out). The runner
+reads the encoder's output with BurntSushi/toml, the Go reference
+implementation, so the encoder check doesn't rely on forgo_lib_toml's
+parser.
+
+| TOML | Valid | Invalid | Encoder |
+|---|---:|---:|---:|
+| 1.1 | 218 / 218 | 502 / 502 | 218 / 218 |
+| 1.0 | 208 / 208 | 509 / 509 | 208 / 208 |
+
+`crates/forgo_lib_toml_bench/scripts/official-toml-test.sh` reproduces
+it.
+
+## Agreement with other parsers
+
+`crates/forgo_lib_toml_bench/tests/differential.rs` makes 50,958 documents
+from the valid toml-test cases (each truncated, and with one of 17
+characters inserted, at a dozen places). Each is read by forgo_lib_toml
+and by the three other Rust crates that parse TOML 1.1 into values:
+`toml` 1.2.3, `toml_edit` 0.25.21 and toml-spanner 1.0.3.
+
+- **Values agree.** Wherever forgo_lib_toml and another crate both accept
+  a document, they read the same values: 20,021 of 20,021 for each.
+- **forgo_lib_toml accepts nothing they reject.**
+- **They accept 46 documents that forgo_lib_toml rejects.** All three
+  accept the same 46, and each one has a line break inside a key/value
+  pair of an inline table, such as `t = { a` on one line and `= 1 }` on
+  the next. TOML 1.1 allows line breaks *between* an inline table's
+  pairs, but not within one: its ABNF has `keyval = key keyval-sep val`
+  and `keyval-sep = ws %x3D ws`, where `ws` is spaces and tabs only. Each
+  of the 46 reads the same as theirs once the pair is on one line. The
+  test checks exactly this, and fails on any other kind of difference.
 
 ## Where the versions differ
 

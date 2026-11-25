@@ -13,10 +13,10 @@ in place, build them in code, and write them. No dependencies, no
   comments, blank lines, indentation, quoting, key order, line endings
   and a missing final newline all stay. Each edit is checked, and one
   that can't keep the layout is refused rather than re-rendered.
-- **Fast.** About 1.1 GB/s on a Cargo.lock: 5 times the `toml` crate, 12
-  times `toml_edit`, and within 15% of the fastest, toml-spanner, which
-  uses `unsafe`. Editing and writing a manifest is 5 to 7 times faster
-  than with `toml_edit` ([How it compares](#how-it-compares)).
+- **Fast.** Reads zed's Cargo.lock in full at about 700 MB/s: nearly 4
+  times the `toml` crate and 8 times `toml_edit`. Only toml-spanner, which
+  uses `unsafe`, reads faster (by 10 to 40%). Editing is the fastest
+  measured: 5 to 10 times `toml_edit` ([How it compares](#how-it-compares)).
 - **Errors say what and where:** a kind, a message, and a line and
   column.
 - **Hardened.** 1.8 million mutated documents parse without a panic or a
@@ -240,43 +240,66 @@ The kinds: `Syntax`, `String`, `Number`, `Datetime`, `Duplicate`, `Table`
 
 ## How it compares
 
-Parse throughput in MB/s, higher is better. Measured on an Apple M-series
-Mac with Rust 1.97.1, on November 25, 2026, by
-`cargo run --release --bin quick` in
-[`crates/forgo_lib_toml_bench`](../forgo_lib_toml_bench):
+Against the other Rust TOML crates, measured on November 25, 2026 (Apple
+M-series, Rust 1.97.1). The full report, and how to reproduce it:
+[RESULTS.md](../forgo_lib_toml_bench/RESULTS.md).
 
-| Crate | Cargo.lock (1 MB) | mixed (1 MB) | Cargo.toml (1 KB) |
-|---|---:|---:|---:|
-| **forgo_lib_toml** | **1,168** | **395** | **566** |
-| toml-spanner 1.0.3 | 1,365 | 399 | 674 |
-| boml 2.0.1 | 295 | 134 | 146 |
-| toml 1.2.3 (`DeTable`) | 233 | 75 | 141 |
-| toml 1.2.3 (`Table`) | 158 | 48 | 84 |
-| taplo 0.14.0 (syntax tree only) | 117 | 65 | 57 |
-| toml_edit 0.25.21 | 98 | 46 | 56 |
-| toml-span 0.7.2 | 89 | no date-times | 48 |
-| basic-toml 0.1.10 | 44 | no date-times | 40 |
+**Compliance.** toml-test, TOML 1.1: share of valid documents accepted and
+invalid ones rejected. TOML 1.0 and the other crates are in the report.
 
-The inputs:
+| Crate | Valid (218) | Invalid (493) |
+|---|---:|---:|
+| **forgo_lib_toml** | **100%** | **100%** |
+| toml-spanner 1.0.3 | 100% | 100% |
+| toml 1.2.3 | 100% | 100% |
+| toml_edit 0.25.21 | 100% | 100% |
+| boml 2.0.1 | 100% | 71.2% |
+| taplo 0.14.0 | 91.7% | 99.2% |
+| toml-span 0.7.2 | 89.4% | 99.2% |
+| basic-toml 0.1.10 | 85.3% | 99.2% |
 
-- **Cargo.lock**: 4,500 packages, as Cargo writes them.
-- **mixed**: every kind of value, including escapes, multi-line strings,
-  inline tables, dotted keys and arrays of tables.
-- **Cargo.toml**: a typical package manifest.
+toml-test's own runner passes forgo_lib_toml on every case too, for both
+versions. On 50,958 mutated documents, forgo_lib_toml, `toml`,
+`toml_edit` and toml-spanner read the same values wherever they all
+accept a document. The other three also accept 46 documents that TOML
+1.1 forbids (a line break inside an inline table's key/value pair);
+forgo_lib_toml rejects them ([COMPLIANCE.md](COMPLIANCE.md)).
 
-toml-spanner is faster on the lock file and the manifest by about 15%.
-It uses `unsafe` code and returns values that borrow the input, while
-forgo_lib_toml has no `unsafe` and copies the input into the document.
+**Speed.** Parse, then read every key and value, in MB/s (higher is
+better):
 
-Editing and writing, in µs, lower is better (`--bin quick -- --edit`):
+| Crate | zed Cargo.lock | zed Cargo.toml | ruff pyproject.toml | Cargo.toml 1 KB |
+|---|---:|---:|---:|---:|
+| **forgo_lib_toml** | **690** | **497** | **1,162** | **437** |
+| toml-spanner 1.0.3 | 953 | 664 | 1,495 | 587 |
+| boml 2.0.1 | 290 | 169 | 455 | 149 |
+| toml 1.2.3 (`DeTable`) | 186 | 141 | 248 | 139 |
+| toml 1.2.3 (`Table`) | 130 | 88 | 181 | 84 |
+| toml_edit 0.25.21 | 87 | 71 | 135 | 55 |
 
-| Task | forgo_lib_toml | parsed for editing | toml_edit 0.25.21 |
-|---|---:|---:|---:|
-| Cargo.toml: set a version, add a dependency, write | **3.4** (4.9×) | **2.4** (7.1×) | 16.7 |
-| Cargo.lock (1 MB): set one version, write | **2,149** (6.2×) | **1,204** (11.1×) | 13,419 |
+forgo_lib_toml is 3.1 to 4.7 times as fast as `toml`'s fastest interface
+and 7 to 9 times `toml_edit`, on every input measured. toml-spanner is
+1.1 to 1.4 times as fast as forgo_lib_toml. It uses `unsafe` code, and
+its values borrow the input, while forgo_lib_toml copies the input into
+the document.
 
-Every forgo_lib_toml edit is checked as described in [Edit](#edit);
-`toml_edit` re-renders its document model.
+**Memory.** forgo_lib_toml holds the least at its peak of all the crates
+measured: 1.7 MiB for zed's 489 KiB Cargo.lock, text included. It makes
+15 allocations for that parse; toml-spanner makes 11, and the others
+thousands.
+
+**Writing.** Writing TOML from a value tree is the fastest measured: zed's
+Cargo.lock in 786 µs, against 955 for `toml` and 1,965 for toml-spanner.
+
+**Editing.** Parse, edit, write, in µs (lower is better). The crates write
+identical text:
+
+| Task | forgo_lib_toml | parsed for editing | toml-spanner | toml_edit |
+|---|---:|---:|---:|---:|
+| 1 KB Cargo.toml: set a version, add a dependency | **3.3** | **2.2** | 4.1 | 16.2 |
+| zed's Cargo.lock: set one version | **1,291** | **709** | 1,960 | 7,208 |
+
+Every forgo_lib_toml edit is checked, as described in [Edit](#edit).
 
 [`Document`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Document.html
 [`Table`]: https://docs.rs/forgo_lib_toml/latest/forgo_lib_toml/struct.Table.html
