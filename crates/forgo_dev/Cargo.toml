@@ -6,4 +6,5 @@ publish = false
 description = "Repo-native developer tools for the forgo-rust workspace, run as `cargo x`."
 
 [dependencies]
+forgo_lib_semver = { path = "../forgo_lib_semver" }
 forgo_lib_yaml = { path = "../forgo_lib_yaml" }

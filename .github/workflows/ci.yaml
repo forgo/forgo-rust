@@ -15,6 +15,7 @@ jobs:
           - forgo
           - forgo_dev
           - forgo_lib_cli
+          - forgo_lib_semver
           - forgo_lib_yaml
     steps:
       - name: Checkout repository
@@ -29,17 +30,23 @@ jobs:
         run: cargo make doc-check-project ${{ matrix.project }}
 
   msrv:
-    # forgo_lib_yaml declares a minimum supported Rust version
-    # (`rust-version` in its Cargo.toml); make sure it still builds there.
+    # The libraries that declare a minimum supported Rust version
+    # (`rust-version` in their Cargo.toml) must still build with it. The
+    # matrix key isn't `project`, so `cargo x new` doesn't add every crate.
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate:
+          - forgo_lib_semver
+          - forgo_lib_yaml
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Build forgo_lib_yaml with its minimum supported Rust version
+      - name: Build ${{ matrix.crate }} with its minimum supported Rust version
         run: |
-          msrv=$(grep -m1 '^rust-version' crates/forgo_lib_yaml/Cargo.toml | cut -d '"' -f 2)
+          msrv=$(grep -m1 '^rust-version' "crates/${{ matrix.crate }}/Cargo.toml" | cut -d '"' -f 2)
           rustup toolchain install "$msrv" --profile minimal
-          cargo +"$msrv" check -p forgo_lib_yaml
+          cargo +"$msrv" check -p "${{ matrix.crate }}"
 
   test:
     runs-on: ubuntu-latest
@@ -49,6 +56,7 @@ jobs:
           - forgo
           - forgo_dev
           - forgo_lib_cli
+          - forgo_lib_semver
           - forgo_lib_yaml
     steps:
       - name: Checkout repository
@@ -58,11 +66,15 @@ jobs:
       - name: Fetch the official YAML test suite
         if: matrix.project == 'forgo_lib_yaml'
         run: crates/forgo_lib_yaml/scripts/fetch-yaml-test-suite.sh
+      - name: Record node-semver's behaviour (Node.js)
+        if: matrix.project == 'forgo_lib_semver'
+        run: crates/forgo_lib_semver/scripts/fetch-node-semver.sh
       - name: Run tests for ${{ matrix.project }}
         run: cargo make test-project ${{ matrix.project }}
         env:
-          # The YAML compliance tests fail instead of skipping without the suite.
+          # Compliance tests fail instead of skipping without their data.
           YAML_TEST_SUITE_REQUIRED: "1"
+          SEMVER_NODE_REQUIRED: "1"
 
   test-windows:
     # forgo_dev edits files in place and runs cargo and git: check it on

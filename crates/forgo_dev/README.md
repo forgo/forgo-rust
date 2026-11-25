@@ -19,6 +19,7 @@ edited list byte for byte.
 ```bash
 cargo x new <lib|bin|wasm> <name> [--public]
 cargo x rm [<lib|bin|wasm>] <name> [--yes]
+cargo x semver <validate|explain|compare|sort|bump|matches|max|min> ...
 cargo x help
 ```
 
@@ -76,6 +77,44 @@ the first remaining choice. Lines in `.github` that still mention the
 crate (a `matrix.project == '<name>'` condition, a path) are listed
 afterwards, to check by hand.
 
+### `cargo x semver`
+
+Versions and requirements, with [forgo_lib_semver](../forgo_lib_semver):
+exact SemVer 2.0.0, numbers of any size, requirements in Cargo's syntax or
+npm's (`--npm`).
+
+```console
+$ cargo x semver validate 1.2.3 v1.2.3
+1.2.3: valid
+v1.2.3: invalid: unexpected character 'v' in the major version at byte 0 (--lenient accepts a `v` or `=` prefix)
+$ cargo x semver bump premajor 1.2.3 rc
+2.0.0-rc.0
+$ cargo x semver max '^1.2' 1.2.0 1.9.3 2.0.0
+1.9.3
+$ cargo x semver explain --npm '^1.2.3 || 2.x'
+requirement  ^1.2.3 || 2.x (npm)
+canonical    >=1.2.3 <2.0.0-0||>=2.0.0 <3.0.0-0
+lowest       1.2.3
+$ printf '1.0.0+b\n1.0.0+a\n0.9.0\n' | cargo x semver sort
+0.9.0
+1.0.0+a
+1.0.0+b  (same precedence as the line above)
+```
+
+| Command | Answers |
+|---|---|
+| `validate <version>...` | is each a valid version? |
+| `explain <version or requirement>` | its parts, or its canonical form and lowest version |
+| `compare <a> <b>` | `<`, `=` or `>` by precedence (noting differing build metadata) |
+| `sort [<version>...]` | sorted, ties of precedence marked (standard input if none) |
+| `bump <release> <version> [<id>]` | the next version (`major` … `prerelease`, `release`) |
+| `matches <requirement> <version>...` | does each meet it? |
+| `max`/`min <requirement> [<version>...]` | the highest or lowest that meets it |
+
+`--json` prints JSON; `--lenient` reads versions as npm does loosely.
+Exit codes: 0 yes, 1 no (invalid, doesn't match, none found), 2 usage
+mistake, so scripts can branch on them.
+
 ## Names
 
 | Kind | Rule | Example |
@@ -117,6 +156,7 @@ function from text to text:
 | `workspace` | `add_member`, `remove_member`, `members` |
 | `workflows` | `edit_ci_matrix`, `edit_release_options`, `mentions` |
 | `templates` | the files `new` writes |
+| `semver` | `cargo x semver` |
 | `fsx` | `Plan`: file changes applied together |
 | `metadata` | workspace packages from `cargo metadata` |
 
@@ -131,6 +171,7 @@ cargo test -p forgo_dev
 | `workflows` | exact output of the list edits: styles, comments, quoting, CRLF, no final newline, `default`, errors |
 | `workspace` | exact output of the members edits; `default-members`, other tables, CRLF, errors |
 | `cli` | command lines and names |
+| `semver` | every `cargo x semver` command, text and JSON, exit codes |
 | `commands` | `new` and `rm` on scratch workspaces: byte-exact round trips, dry runs, every refusal, uncommitted changes |
 
 CI runs them on Linux and Windows.

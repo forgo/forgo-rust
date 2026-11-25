@@ -1,0 +1,18 @@
+[package]
+name = "forgo_lib_semver"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "MIT"
+description = "Semantic Versioning 2.0.0 for Rust: versions of any size, exact precedence, bumping, and Cargo and npm version requirements with set operations. No dependencies, no unsafe, no_std."
+repository = "https://github.com/forgo/forgo-rust"
+readme = "README.md"
+keywords = ["semver", "version", "npm", "cargo", "requirements"]
+categories = ["parser-implementations", "development-tools", "no-std"]
+
+[dependencies]
+
+[dev-dependencies]
+# Reads the recorded node-semver behaviour (JSON) in tests/npm.rs.
+forgo_lib_yaml = { path = "../forgo_lib_yaml" }
