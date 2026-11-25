@@ -4,6 +4,7 @@ members = [
     "crates/forgo",
     "crates/forgo_dev",
     "crates/forgo_lib_cli",
+    "crates/forgo_lib_semver",
     "crates/forgo_lib_yaml",
 ]
 # Standalone benchmark crate with its own lockfile (third-party deps stay out

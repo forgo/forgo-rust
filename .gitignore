@@ -22,6 +22,11 @@ target/
 # To set up: crates/forgo_lib_yaml/scripts/fetch-yaml-test-suite.sh
 crates/forgo_lib_yaml/tests/yaml-test-suite-data/
 
+# node-semver at a pinned commit, and what it does on its own test inputs
+# (fetched, not committed). To set up:
+# crates/forgo_lib_semver/scripts/fetch-node-semver.sh
+crates/forgo_lib_semver/tests/node-semver-data/
+
 # Scratch debug programs and their compiled binaries (never commit these)
 /test_*
 /debug_*
