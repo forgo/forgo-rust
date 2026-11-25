@@ -199,13 +199,12 @@ fn seed() -> u64 {
 
 fn hash(s: &[u8]) -> u64 {
     let mut h = seed();
-    let mut chunks = s.chunks_exact(8);
-    for c in &mut chunks {
-        let w = u64::from_le_bytes(c.try_into().expect("8 bytes"));
-        h = (h.rotate_left(23) ^ w).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    let (chunks, rest) = s.as_chunks::<8>();
+    for &c in chunks {
+        h = (h.rotate_left(23) ^ u64::from_le_bytes(c)).wrapping_mul(0x9e37_79b9_7f4a_7c15);
     }
     let mut last = [0u8; 8];
-    last[..chunks.remainder().len()].copy_from_slice(chunks.remainder());
+    last[..rest.len()].copy_from_slice(rest);
     h = (h.rotate_left(23) ^ u64::from_le_bytes(last) ^ s.len() as u64)
         .wrapping_mul(0x9e37_79b9_7f4a_7c15);
     h ^ (h >> 29)
