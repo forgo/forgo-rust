@@ -9,6 +9,7 @@ default) and [TOML 1.0.0](https://toml.io/en/v1.0.0).
 | toml-test, TOML 1.0.0 | 208 valid and 509 invalid documents | all decoded exactly / all rejected |
 | Encoder | the expected values of every valid case, both versions | all read back the same |
 | Robustness | 1.8 million truncated and edited documents | no panics or hangs; all round-trip |
+| Editing | 8,160 edits at every path of every valid toml-test document | 7,508 made, each checked independently; 652 refused, none wrong |
 
 ## toml-test
 
@@ -84,6 +85,59 @@ rejects it in both versions.
   5,000 keys (the hash index, and duplicates found through it), key order,
   the version differences, date-times, and the encoder's exact output.
 - **Doctests**: the README's examples and the API documentation's.
+
+## Editing
+
+Edits change the text in place, so they're checked against TOML itself
+rather than against a re-rendering.
+
+**At run time,** each edit is checked one of two ways.
+
+- **Values and new lines are parsed in place.** That covers a replaced
+  value, a rewritten array or inline table, and a key/value line added to
+  a section. The new text is parsed by the same parser, where it sits,
+  in its context. That enforces TOML's syntax, duplicate keys and table
+  rules, and the result must read back as the value asked for.
+- **Other changes re-parse the whole document.** That covers removing
+  lines or sections, and adding a section for a table that so far exists
+  only as part of a longer header. The new text is parsed from scratch
+  and compared with the old document, and it must differ by exactly the
+  change.
+
+An edit that fails a check returns an error and leaves the document as it
+was. An edit that can't keep the layout returns
+`EditError::Unsupported` instead of re-rendering anything.
+
+**Tests.**
+
+- **Every edit on every document** (`tests/edit_robustness.rs`). Each
+  valid toml-test document, under its own version (426 in all), gets
+  these edits at every path:
+  - replace the value;
+  - add a key to every table, and a key under two new tables;
+  - remove the value;
+  - reverse and extend every array.
+
+  Of the 8,160 edits:
+  - 7,508 are made. The test then checks each one with its own code,
+    which doesn't share the crate's checks: the path holds what was
+    asked, every other value is unchanged, and the text parses back from
+    scratch to the same values.
+  - 637 are refused because they would replace a table written as
+    `[sections]` or dotted keys with a value.
+  - 15 are refused because they would delete a comment. They are in the
+    suite's two deliberately tricky comment files.
+- **Edits in a row** (also `tests/edit_robustness.rs`). Chains of edits
+  on one document, alternating replace, add, extend and remove: 1,659
+  made in sequence, each later edit working on text the earlier ones
+  moved.
+- **Positions match a fresh parse.** In debug builds, so in all of
+  these tests, every edit made in place is compared with a fresh parse of
+  its text: values, key order, how each table was made, and where
+  everything is.
+- **Exact text** (`tests/editing.rs`). 31 cases check the exact output
+  of edits on manifests, a Cargo.lock and this workspace's own
+  Cargo.toml. Every case also runs with CRLF line endings.
 
 ## Reproducing
 
