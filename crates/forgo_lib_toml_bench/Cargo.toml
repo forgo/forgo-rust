@@ -1,0 +1,36 @@
+# Benchmarks and comparisons of forgo_lib_toml with the other Rust TOML
+# crates.
+#
+# Not a member of the root workspace (see the root Cargo.toml `exclude`):
+# it has its own [workspace] and Cargo.lock, so the crates it compares
+# against never appear in the main lockfile. forgo_lib_toml itself stays
+# dependency-free.
+#
+#   cargo run --release --manifest-path crates/forgo_lib_toml_bench/Cargo.toml --bin quick
+#
+# See README.md.
+
+[package]
+name = "forgo_lib_toml_bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[workspace]
+
+[dependencies]
+forgo_lib_toml = { path = "../forgo_lib_toml" }
+basic-toml = "=0.1.10"
+boml = "=2.0.1"
+serde = "1"
+serde_json = "1"
+taplo = "=0.14.0"
+toml = "=1.2.3"
+toml-span = "=0.7.2"
+toml-spanner = "=1.0.3"
+toml_edit = "=0.25.21"
+toml_parser = "=1.1.7"
+
+[profile.release]
+debug = 1

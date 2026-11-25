@@ -16,6 +16,7 @@ jobs:
           - forgo_dev
           - forgo_lib_cli
           - forgo_lib_semver
+          - forgo_lib_toml
           - forgo_lib_yaml
     steps:
       - name: Checkout repository
@@ -38,6 +39,7 @@ jobs:
       matrix:
         crate:
           - forgo_lib_semver
+          - forgo_lib_toml
           - forgo_lib_yaml
     steps:
       - name: Checkout repository
@@ -57,6 +59,7 @@ jobs:
           - forgo_dev
           - forgo_lib_cli
           - forgo_lib_semver
+          - forgo_lib_toml
           - forgo_lib_yaml
     steps:
       - name: Checkout repository
@@ -69,12 +72,16 @@ jobs:
       - name: Record node-semver's behaviour (Node.js)
         if: matrix.project == 'forgo_lib_semver'
         run: crates/forgo_lib_semver/scripts/fetch-node-semver.sh
+      - name: Fetch the toml-test suite
+        if: matrix.project == 'forgo_lib_toml'
+        run: crates/forgo_lib_toml/scripts/fetch-toml-test.sh
       - name: Run tests for ${{ matrix.project }}
         run: cargo make test-project ${{ matrix.project }}
         env:
           # Compliance tests fail instead of skipping without their data.
           YAML_TEST_SUITE_REQUIRED: "1"
           SEMVER_NODE_REQUIRED: "1"
+          TOML_TEST_SUITE_REQUIRED: "1"
 
   test-windows:
     # forgo_dev edits files in place and runs cargo and git: check it on
