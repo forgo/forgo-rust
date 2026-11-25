@@ -12,8 +12,7 @@
 //! **Coverage:**
 //! Indentation, separation, line prefixes, empty lines, line folding, comments, directives, node properties
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use common::Fixture;
 use forgo_lib_yaml::Doc;

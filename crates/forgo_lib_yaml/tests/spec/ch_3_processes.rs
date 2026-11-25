@@ -12,8 +12,7 @@
 //! **Coverage:**
 //! Load/dump processes, representation graph, serialization tree, presentation stream, failure points
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use common::Fixture;
 use forgo_lib_yaml::{Doc, Node, Scalar};
@@ -865,9 +864,8 @@ fn ch_3_7_2_01_duplicate_keys_different_formats() {
     // Spec requires duplicate key detection based on canonical form
     // Most implementations will accept this (last wins), but strict
     // spec compliance requires detecting semantic duplicates
-    if result.is_ok() {
+    if let Ok(doc) = result {
         // Implementation allows duplicate keys (common behavior)
-        let doc = result.unwrap();
         let Node::Map(m) = doc.root().node() else {
             panic!("Expected map");
         };
@@ -926,8 +924,7 @@ fn ch_3_7_2_03_duplicate_keys_numeric_formats() {
     let result = Doc::from_str(input);
 
     // Should detect duplicates based on resolved numeric value
-    if result.is_ok() {
-        let doc = result.unwrap();
+    if let Ok(doc) = result {
         let Node::Map(m) = doc.root().node() else {
             panic!("Expected map");
         };

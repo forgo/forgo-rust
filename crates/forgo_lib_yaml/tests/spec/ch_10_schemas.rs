@@ -12,8 +12,17 @@
 //! **Coverage:**
 //! Failsafe schema, JSON schema, Core schema, tag resolution
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
+
+/// The value of `key` in a one-level mapping document.
+fn value_of(input: &str, key: &str) -> Node {
+    let d = Doc::from_str(input).unwrap();
+    let Node::Map(root) = d.root().node() else {
+        panic!("root not a map");
+    };
+    let (_, val) = root.iter().find(|(k, _)| k == key).unwrap();
+    val.node().clone()
+}
 
 use common::Fixture;
 use forgo_lib_yaml::{Doc, Node, Scalar};
@@ -192,8 +201,7 @@ fn ch_10_2_10_json_tilde_not_null() {
 
     // In strict JSON schema, ~ should be string
     // Most parsers use Core schema by default
-    if result.is_ok() {
-        let d = result.unwrap();
+    if let Ok(d) = result {
         let Node::Map(root) = d.root().node() else {
             panic!("root not a map");
         };
@@ -218,18 +226,11 @@ fn ch_10_2_11_json_bool_case_sensitive() {
 }
 
 #[test]
-fn ch_10_2_12_json_uppercase_bool_is_string() {
-    // JSON Schema: "True" should be a string, not boolean
-    let input = "flag: True\n";
-    let result = Doc::from_str(input);
-
-    // In strict JSON schema, should be string
-    // Core schema allows case-insensitive
-    if result.is_ok() {
-        // Parser may use Core schema (accepts True as bool)
-        // or JSON schema (True is string)
-        let _ = result.unwrap();
-    }
+fn ch_10_2_12_uppercase_bool_follows_the_core_schema() {
+    // The JSON schema reads `True` as a string. forgo_lib_yaml resolves
+    // plain scalars with the core schema (10.3), where it is a boolean.
+    let val = value_of("flag: True\n", "flag");
+    assert!(matches!(val, Node::Scalar(Scalar::Bool(true))));
 }
 
 #[test]
@@ -247,31 +248,19 @@ fn ch_10_2_13_json_decimal_only_no_octal() {
 }
 
 #[test]
-fn ch_10_2_14_json_octal_is_error_or_string() {
-    // JSON Schema: octal notation not allowed
-    let input = "value: 0o52\n";
-    let result = Doc::from_str(input);
-
-    // In strict JSON schema, this should be an error or string
-    // Core schema allows it
-    if result.is_ok() {
-        // Parser uses Core schema (allows octal)
-        let _ = result.unwrap();
-    }
+fn ch_10_2_14_octal_follows_the_core_schema() {
+    // The JSON schema has no octal; the core schema (10.3) reads `0o52` as
+    // the integer 42.
+    let val = value_of("value: 0o52\n", "value");
+    assert_eq!(val.as_i64(), Some(42));
 }
 
 #[test]
-fn ch_10_2_15_json_hex_is_error_or_string() {
-    // JSON Schema: hexadecimal notation not allowed
-    let input = "value: 0x2A\n";
-    let result = Doc::from_str(input);
-
-    // In strict JSON schema, this should be an error or string
-    // Core schema allows it
-    if result.is_ok() {
-        // Parser uses Core schema (allows hex)
-        let _ = result.unwrap();
-    }
+fn ch_10_2_15_hex_follows_the_core_schema() {
+    // The JSON schema has no hexadecimal; the core schema (10.3) reads
+    // `0x2A` as the integer 42.
+    let val = value_of("value: 0x2A\n", "value");
+    assert_eq!(val.as_i64(), Some(42));
 }
 
 #[test]
@@ -289,31 +278,19 @@ fn ch_10_2_16_json_no_special_floats() {
 }
 
 #[test]
-fn ch_10_2_17_json_inf_is_error_or_string() {
-    // JSON Schema: .inf should be error or string
-    let input = "value: .inf\n";
-    let result = Doc::from_str(input);
-
-    // In strict JSON schema, should be error
-    // Core schema allows it
-    if result.is_ok() {
-        // Parser uses Core schema
-        let _ = result.unwrap();
-    }
+fn ch_10_2_17_infinity_follows_the_core_schema() {
+    // The JSON schema has no infinity; the core schema (10.3) reads `.inf`
+    // as a float.
+    let val = value_of("value: .inf\n", "value");
+    assert_eq!(val.as_f64(), Some(f64::INFINITY));
 }
 
 #[test]
-fn ch_10_2_18_json_nan_is_error_or_string() {
-    // JSON Schema: .nan should be error or string
-    let input = "value: .nan\n";
-    let result = Doc::from_str(input);
-
-    // In strict JSON schema, should be error
-    // Core schema allows it
-    if result.is_ok() {
-        // Parser uses Core schema
-        let _ = result.unwrap();
-    }
+fn ch_10_2_18_nan_follows_the_core_schema() {
+    // The JSON schema has no NaN; the core schema (10.3) reads `.nan` as a
+    // float.
+    let val = value_of("value: .nan\n", "value");
+    assert!(val.as_f64().is_some_and(f64::is_nan));
 }
 
 // ============================================================================

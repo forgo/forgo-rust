@@ -57,8 +57,8 @@ fn test_node_number_creates_number_scalar() {
 
 #[test]
 fn test_node_number_accepts_string() {
-    let node = Node::number("3.14");
-    assert_eq!(node.as_f64(), Some(3.14));
+    let node = Node::number("2.5");
+    assert_eq!(node.as_f64(), Some(2.5));
 }
 
 #[test]
@@ -110,10 +110,11 @@ fn test_node_null_creates_null_scalar() {
 
 #[test]
 fn test_build_simple_map_with_constructors() {
-    let mut map_entries = vec![];
-    map_entries.push(("name".into(), str_elem("test-app")));
-    map_entries.push(("version".into(), num_elem("1.0")));
-    map_entries.push(("enabled".into(), bool_elem(true)));
+    let map_entries = vec![
+        ("name".into(), str_elem("test-app")),
+        ("version".into(), num_elem("1.0")),
+        ("enabled".into(), bool_elem(true)),
+    ];
 
     let node = Node::Map(map_entries);
 
@@ -159,11 +160,9 @@ fn test_build_sequence_with_constructors() {
 #[test]
 fn test_nested_structure_with_constructors() {
     // Build: { outer: { inner: "value" } }
-    let mut inner_map: Vec<(String, _)> = vec![];
-    inner_map.push(("inner".into(), str_elem("value")));
+    let _inner_map: Vec<(String, _)> = vec![("inner".into(), str_elem("value"))];
 
-    let mut outer_map: Vec<(MapKey, _)> = vec![];
-    outer_map.push(("outer".into(), map_elem()));
+    let outer_map: Vec<(MapKey, _)> = vec![("outer".into(), map_elem())];
 
     // This shows we need better helpers - we'll add them next!
     let node = Node::Map(outer_map);

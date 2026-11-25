@@ -1,28 +1,49 @@
 # Perform a security audit at midnight every day, and check every lockfile
 # for crates with advisories: the workspace's, and the benchmark crates' own
 # (they hold the third-party crates they compare against).
-# Each new advisory (including informal) will create an issue.
-# https://github.com/rustsec/audit-check?tab=readme-ov-file#audit-changes
+#
+# A vulnerability fails the run. On main, each advisory against the
+# workspace's lockfile also becomes an issue, closed again once it's gone.
+# Only that leg manages issues: the action closes every open advisory issue
+# that its own run didn't find, so legs doing it for different lockfiles
+# would close each other's issues. The benchmark lockfiles' findings are in
+# their runs' summaries.
+# https://github.com/actions-rust-lang/audit
 
 name: Audit
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   audit:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        lockfile:
-          - .
-          - crates/forgo_lib_semver_bench
-          - crates/forgo_lib_toml_bench
-          - crates/forgo_lib_yaml_bench
+        include:
+          - lockfile: .
+            issues: true
+          - lockfile: crates/forgo_lib_semver_bench
+          - lockfile: crates/forgo_lib_toml_bench
+            # basic-toml is unmaintained; the benchmark compares against it
+            # on purpose.
+            ignore: RUSTSEC-2026-0374
+          - lockfile: crates/forgo_lib_yaml_bench
+            # unsafe-libyaml and yaml-rust are unmaintained; the benchmark
+            # compares against them on purpose.
+            ignore: RUSTSEC-2024-0449,RUSTSEC-2024-0320
     steps:
-      - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2.0.0
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/audit@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: ${{ matrix.lockfile }}
+          workingDirectory: ${{ matrix.lockfile }}
+          ignore: ${{ matrix.ignore }}
+          # Always "true" or "false": an empty value would mean the
+          # action's default, which is "true" on main.
+          createIssues: ${{ matrix.issues == true && github.ref == 'refs/heads/main' }}

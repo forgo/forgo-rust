@@ -12,8 +12,7 @@
 //! **Coverage:**
 //! BNF notation, production parameters, context parameters, indentation rules
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use common::Fixture;
 use forgo_lib_yaml::Doc;

@@ -54,8 +54,8 @@ fn test_elem_number_creates_number_scalar() {
 
 #[test]
 fn test_elem_number_accepts_float() {
-    let elem = Elem::number(3.14);
-    assert_eq!(elem.node().as_f64(), Some(3.14));
+    let elem = Elem::number(2.5);
+    assert_eq!(elem.node().as_f64(), Some(2.5));
 }
 
 #[test]
