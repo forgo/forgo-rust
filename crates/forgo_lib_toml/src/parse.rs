@@ -311,14 +311,28 @@ impl<'s> Parser<'s> {
     /// Whitespace, comments and newlines (between array items, and in
     /// TOML 1.1 inline tables).
     fn blank(&mut self) -> Result<(), Error> {
+        let mut i = self.i;
         loop {
-            self.ws();
-            match self.peek() {
-                Some(b'#') => self.comment()?,
-                Some(b'\n' | b'\r') => {
-                    self.newline()?;
+            match self.b.get(i) {
+                Some(b' ' | b'\t' | b'\n') => i += 1,
+                Some(b'\r') if self.b.get(i + 1) == Some(&b'\n') => i += 2,
+                Some(b'#') => {
+                    self.i = i;
+                    self.comment()?;
+                    i = self.i;
                 }
-                _ => return Ok(()),
+                Some(b'\r') => {
+                    self.i = i;
+                    return self.err(
+                        i,
+                        ErrorKind::Syntax,
+                        "a carriage return must be followed by a newline",
+                    );
+                }
+                _ => {
+                    self.i = i;
+                    return Ok(());
+                }
             }
         }
     }
@@ -764,6 +778,8 @@ impl<'s> Parser<'s> {
             Some(b'"') => {
                 let t = if self.b[self.i..].starts_with(b"\"\"\"") {
                     self.multiline_basic()?
+                } else if let Some(t) = self.plain_basic_string() {
+                    t
                 } else {
                     self.basic_string()?
                 };
@@ -976,6 +992,18 @@ impl<'s> Parser<'s> {
             end: end as u32,
             side: false,
         }
+    }
+
+    /// A basic string with nothing to decode (most strings), or `None`
+    /// to leave it to [`basic_string`](Self::basic_string).
+    #[inline(always)]
+    fn plain_basic_string(&mut self) -> Option<Text> {
+        let start = self.i + 1;
+        let end = scan(self.b, start, b'"', b'\\');
+        (self.b.get(end) == Some(&b'"')).then(|| {
+            self.i = end + 1;
+            Self::src_text(start, end)
+        })
     }
 
     /// `"…"` (the cursor at the opening quote).

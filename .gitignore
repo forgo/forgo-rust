@@ -47,3 +47,4 @@ crates/forgo_lib_yaml/test_*
 .claude/settings.local.json
 .claude/.cc-writes/
 .idea/
+crates/forgo_lib_toml_bench/inputs/

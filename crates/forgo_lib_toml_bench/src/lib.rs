@@ -88,3 +88,484 @@ codegen-units = 1
 name = "demo"
 path = "src/main.rs"
 "#;
+
+// ---------------------------------------------------------------------------
+// The crates compared
+// ---------------------------------------------------------------------------
+
+use forgo_lib_toml::{Datetime, Item};
+
+/// A TOML crate under comparison.
+pub struct Contender {
+    pub name: &'static str,
+    pub version: &'static str,
+    /// What its parser produces.
+    pub produces: &'static str,
+    /// Whether it accepts the document.
+    pub accepts: fn(&str) -> bool,
+    /// Parse and read every value; a number that depends on all of them,
+    /// or `None` if the document is rejected.
+    pub load: fn(&str) -> Option<u64>,
+}
+
+/// Folds what a walk reads into one number, so nothing is optimized away.
+#[derive(Default)]
+pub struct Sum(u64);
+
+impl Sum {
+    fn add(&mut self, x: u64) {
+        self.0 = self.0.rotate_left(5) ^ x;
+    }
+    fn str(&mut self, s: &str) {
+        self.add(s.len() as u64);
+        self.add(s.as_bytes().first().copied().unwrap_or(0) as u64);
+    }
+}
+
+fn walk_forgo(v: forgo_lib_toml::Value<'_>, s: &mut Sum) {
+    use forgo_lib_toml::Value as V;
+    match v {
+        V::String(x) => s.str(x),
+        V::Integer(i) => s.add(i as u64),
+        V::Float(f) => s.add(f.to_bits()),
+        V::Boolean(b) => s.add(b as u64),
+        V::Datetime(d) => s.add(d.date.map_or(0, |d| d.day as u64)),
+        V::Array(a) => a.iter().for_each(|v| walk_forgo(v, s)),
+        V::Table(t) => t.iter().for_each(|(k, v)| {
+            s.str(k);
+            walk_forgo(v, s)
+        }),
+    }
+}
+
+fn walk_toml(v: &toml::Value, s: &mut Sum) {
+    use toml::Value as V;
+    match v {
+        V::String(x) => s.str(x),
+        V::Integer(i) => s.add(*i as u64),
+        V::Float(f) => s.add(f.to_bits()),
+        V::Boolean(b) => s.add(*b as u64),
+        V::Datetime(d) => s.add(d.date.map_or(0, |d| d.day as u64)),
+        V::Array(a) => a.iter().for_each(|v| walk_toml(v, s)),
+        V::Table(t) => t.iter().for_each(|(k, v)| {
+            s.str(k);
+            walk_toml(v, s)
+        }),
+    }
+}
+
+fn walk_de(v: &toml::de::DeValue<'_>, s: &mut Sum) {
+    use toml::de::DeValue as V;
+    match v {
+        V::String(x) => s.str(x),
+        V::Integer(i) => s.str(i.as_str()),
+        V::Float(f) => s.str(f.as_str()),
+        V::Boolean(b) => s.add(*b as u64),
+        V::Datetime(d) => s.add(d.date.map_or(0, |d| d.day as u64)),
+        V::Array(a) => a.iter().for_each(|v| walk_de(v.get_ref(), s)),
+        V::Table(t) => t.iter().for_each(|(k, v)| {
+            s.str(k.get_ref());
+            walk_de(v.get_ref(), s)
+        }),
+    }
+}
+
+fn walk_edit_value(v: &toml_edit::Value, s: &mut Sum) {
+    use toml_edit::Value as V;
+    match v {
+        V::String(x) => s.str(x.value()),
+        V::Integer(i) => s.add(*i.value() as u64),
+        V::Float(f) => s.add(f.value().to_bits()),
+        V::Boolean(b) => s.add(*b.value() as u64),
+        V::Datetime(d) => s.add(d.value().date.map_or(0, |d| d.day as u64)),
+        V::Array(a) => a.iter().for_each(|v| walk_edit_value(v, s)),
+        V::InlineTable(t) => t.iter().for_each(|(k, v)| {
+            s.str(k);
+            walk_edit_value(v, s)
+        }),
+    }
+}
+
+fn walk_edit(item: &toml_edit::Item, s: &mut Sum) {
+    match item {
+        toml_edit::Item::None => {}
+        toml_edit::Item::Value(v) => walk_edit_value(v, s),
+        toml_edit::Item::Table(t) => t.iter().for_each(|(k, v)| {
+            s.str(k);
+            walk_edit(v, s)
+        }),
+        toml_edit::Item::ArrayOfTables(a) => a.iter().for_each(|t| {
+            t.iter().for_each(|(k, v)| {
+                s.str(k);
+                walk_edit(v, s)
+            })
+        }),
+    }
+}
+
+fn walk_spanner(item: &toml_spanner::Item<'_>, s: &mut Sum) {
+    use toml_spanner::Value as V;
+    match item.value() {
+        V::String(x) => s.str(x),
+        V::Integer(i) => s.add(i.as_i128() as u64),
+        V::Float(f) => s.add(f.to_bits()),
+        V::Boolean(b) => s.add(*b as u64),
+        V::DateTime(d) => s.add(d.date().map_or(0, |d| d.day as u64)),
+        V::Array(a) => a.iter().for_each(|v| walk_spanner(v, s)),
+        V::Table(t) => t.iter().for_each(|(k, v)| {
+            s.str(k.name);
+            walk_spanner(v, s)
+        }),
+    }
+}
+
+fn walk_json(v: &serde_json::Value, s: &mut Sum) {
+    use serde_json::Value as V;
+    match v {
+        V::Null => {}
+        V::Bool(b) => s.add(*b as u64),
+        V::Number(n) => s.add(
+            n.as_i64()
+                .map_or_else(|| n.as_f64().unwrap_or(0.0).to_bits(), |i| i as u64),
+        ),
+        V::String(x) => s.str(x),
+        V::Array(a) => a.iter().for_each(|v| walk_json(v, s)),
+        V::Object(o) => o.iter().for_each(|(k, v)| {
+            s.str(k);
+            walk_json(v, s)
+        }),
+    }
+}
+
+pub const CONTENDERS: &[Contender] = &[
+    Contender {
+        name: "forgo_lib_toml",
+        version: "0.0.0",
+        produces: "document with views",
+        accepts: |s| forgo_lib_toml::Document::parse(s).is_ok(),
+        load: |s| {
+            let doc = forgo_lib_toml::Document::parse(s).ok()?;
+            let mut sum = Sum::default();
+            walk_forgo(forgo_lib_toml::Value::Table(doc.root()), &mut sum);
+            Some(sum.0)
+        },
+    },
+    Contender {
+        name: "toml-spanner",
+        version: "1.0.3",
+        produces: "arena tree (borrows the input)",
+        accepts: |s| {
+            let arena = toml_spanner::Arena::new();
+            toml_spanner::parse(s, &arena).is_ok()
+        },
+        load: |s| {
+            let arena = toml_spanner::Arena::new();
+            let doc = toml_spanner::parse(s, &arena).ok()?;
+            let mut sum = Sum::default();
+            for (k, v) in doc.table().iter() {
+                sum.str(k.name);
+                walk_spanner(v, &mut sum);
+            }
+            Some(sum.0)
+        },
+    },
+    Contender {
+        name: "toml (DeTable)",
+        version: "1.2.3",
+        produces: "spanned tree (borrows the input)",
+        accepts: |s| toml::de::DeTable::parse(s).is_ok(),
+        load: |s| {
+            let t = toml::de::DeTable::parse(s).ok()?;
+            let mut sum = Sum::default();
+            for (k, v) in t.get_ref().iter() {
+                sum.str(k.get_ref());
+                walk_de(v.get_ref(), &mut sum);
+            }
+            Some(sum.0)
+        },
+    },
+    Contender {
+        name: "toml (Table)",
+        version: "1.2.3",
+        produces: "owned tree",
+        accepts: |s| s.parse::<toml::Table>().is_ok(),
+        load: |s| {
+            let t = s.parse::<toml::Table>().ok()?;
+            let mut sum = Sum::default();
+            for (k, v) in &t {
+                sum.str(k);
+                walk_toml(v, &mut sum);
+            }
+            Some(sum.0)
+        },
+    },
+    Contender {
+        name: "toml_edit",
+        version: "0.25.21",
+        produces: "editable document",
+        accepts: |s| s.parse::<toml_edit::DocumentMut>().is_ok(),
+        load: |s| {
+            let d = s.parse::<toml_edit::DocumentMut>().ok()?;
+            let mut sum = Sum::default();
+            walk_edit(d.as_item(), &mut sum);
+            Some(sum.0)
+        },
+    },
+    Contender {
+        name: "basic-toml",
+        version: "0.1.10",
+        produces: "serde (here into JSON values)",
+        accepts: |s| basic_toml::from_str::<serde_json::Value>(s).is_ok(),
+        load: |s| {
+            let v = basic_toml::from_str::<serde_json::Value>(s).ok()?;
+            let mut sum = Sum::default();
+            walk_json(&v, &mut sum);
+            Some(sum.0)
+        },
+    },
+    Contender {
+        name: "toml-span",
+        version: "0.7.2",
+        produces: "spanned tree",
+        accepts: |s| toml_span::parse(s).is_ok(),
+        load: |s| {
+            toml_span::parse(s)
+                .ok()
+                .map(|v| std::hint::black_box(&v).span.end as u64)
+        },
+    },
+    Contender {
+        name: "boml",
+        version: "2.0.1",
+        produces: "tree (borrows the input)",
+        accepts: |s| boml::parse(s).is_ok(),
+        load: |s| {
+            boml::parse(s)
+                .ok()
+                .map(|t| std::hint::black_box(&t).len() as u64)
+        },
+    },
+    Contender {
+        name: "taplo",
+        version: "0.14.0",
+        produces: "syntax tree, then DOM",
+        accepts: |s| {
+            let p = taplo::parser::parse(s);
+            p.errors.is_empty() && p.into_dom().validate().is_ok()
+        },
+        load: |s| {
+            let p = taplo::parser::parse(s);
+            if !p.errors.is_empty() {
+                return None;
+            }
+            let dom = p.into_dom();
+            dom.validate().ok()?;
+            Some(std::hint::black_box(&dom).flat_iter().count() as u64)
+        },
+    },
+];
+
+// ---------------------------------------------------------------------------
+// Values in one form, for comparing crates
+// ---------------------------------------------------------------------------
+
+/// A date-time's text as TOML reads it.
+fn datetime(s: &str) -> Option<Datetime> {
+    forgo_lib_toml::Document::parse(&format!("x = {s}"))
+        .ok()?
+        .root()
+        .get("x")?
+        .as_datetime()
+}
+
+pub fn item_from_toml(v: &toml::Value) -> Option<Item> {
+    use toml::Value as V;
+    Some(match v {
+        V::String(x) => Item::String(x.clone()),
+        V::Integer(i) => Item::Integer(*i),
+        V::Float(f) => Item::Float(*f),
+        V::Boolean(b) => Item::Boolean(*b),
+        V::Datetime(d) => Item::Datetime(datetime(&d.to_string())?),
+        V::Array(a) => Item::Array(a.iter().map(item_from_toml).collect::<Option<_>>()?),
+        V::Table(t) => Item::Table(
+            t.iter()
+                .map(|(k, v)| Some((k.clone(), item_from_toml(v)?)))
+                .collect::<Option<_>>()?,
+        ),
+    })
+}
+
+fn item_from_edit_value(v: &toml_edit::Value) -> Option<Item> {
+    use toml_edit::Value as V;
+    Some(match v {
+        V::String(x) => Item::String(x.value().clone()),
+        V::Integer(i) => Item::Integer(*i.value()),
+        V::Float(f) => Item::Float(*f.value()),
+        V::Boolean(b) => Item::Boolean(*b.value()),
+        V::Datetime(d) => Item::Datetime(datetime(&d.value().to_string())?),
+        V::Array(a) => Item::Array(a.iter().map(item_from_edit_value).collect::<Option<_>>()?),
+        V::InlineTable(t) => Item::Table(
+            t.iter()
+                .map(|(k, v)| Some((k.to_string(), item_from_edit_value(v)?)))
+                .collect::<Option<_>>()?,
+        ),
+    })
+}
+
+pub fn item_from_edit(item: &toml_edit::Item) -> Option<Item> {
+    Some(match item {
+        toml_edit::Item::None => return None,
+        toml_edit::Item::Value(v) => item_from_edit_value(v)?,
+        toml_edit::Item::Table(t) => Item::Table(
+            t.iter()
+                .map(|(k, v)| Some((k.to_string(), item_from_edit(v)?)))
+                .collect::<Option<_>>()?,
+        ),
+        toml_edit::Item::ArrayOfTables(a) => Item::Array(
+            a.iter()
+                .map(|t| item_from_edit(&toml_edit::Item::Table(t.clone())))
+                .collect::<Option<_>>()?,
+        ),
+    })
+}
+
+pub fn item_from_spanner(item: &toml_spanner::Item<'_>) -> Option<Item> {
+    use toml_spanner::Value as V;
+    Some(match item.value() {
+        V::String(x) => Item::String(x.to_string()),
+        V::Integer(i) => Item::Integer(i.as_i64()?),
+        V::Float(f) => Item::Float(*f),
+        V::Boolean(b) => Item::Boolean(*b),
+        V::DateTime(d) => {
+            let mut buf = std::mem::MaybeUninit::uninit();
+            Item::Datetime(datetime(d.format(&mut buf))?)
+        }
+        V::Array(a) => Item::Array(a.iter().map(item_from_spanner).collect::<Option<_>>()?),
+        V::Table(t) => Item::Table(
+            t.iter()
+                .map(|(k, v)| Some((k.name.to_string(), item_from_spanner(v)?)))
+                .collect::<Option<_>>()?,
+        ),
+    })
+}
+
+/// Equal as TOML values: tables in any order, any NaN equal to any NaN.
+pub fn same(a: &Item, b: &Item) -> bool {
+    match (a, b) {
+        (Item::Float(x), Item::Float(y)) => (x.is_nan() && y.is_nan()) || x == y,
+        (Item::Array(x), Item::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q))
+        }
+        (Item::Table(x), Item::Table(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(k, v)| y.iter().any(|(l, w)| k == l && same(v, w)))
+        }
+        _ => a == b,
+    }
+}
+
+/// What each compared crate reads a document as (`None`: rejected).
+pub fn readings(s: &str) -> [(&'static str, Option<Item>); 4] {
+    let arena = toml_spanner::Arena::new();
+    [
+        (
+            "forgo_lib_toml",
+            forgo_lib_toml::Document::parse(s).ok().map(|d| d.to_item()),
+        ),
+        (
+            "toml",
+            s.parse::<toml::Table>()
+                .ok()
+                .and_then(|t| item_from_toml(&toml::Value::Table(t))),
+        ),
+        (
+            "toml_edit",
+            s.parse::<toml_edit::DocumentMut>()
+                .ok()
+                .and_then(|d| item_from_edit(d.as_item())),
+        ),
+        (
+            "toml-spanner",
+            toml_spanner::parse(s, &arena).ok().and_then(|d| {
+                Some(Item::Table(
+                    d.table()
+                        .iter()
+                        .map(|(k, v)| Some((k.name.to_string(), item_from_spanner(v)?)))
+                        .collect::<Option<_>>()?,
+                ))
+            }),
+        ),
+    ]
+}
+
+/// The text with the white space (newlines included) around every `=`
+/// made one space: what a document that puts newlines inside an inline
+/// table's key/value pairs (which TOML forbids) would be without them.
+pub fn join_pair_lines(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '=' {
+            while out.ends_with([' ', '\t', '\n', '\r']) {
+                out.pop();
+            }
+            out.push_str(" = ");
+            while chars
+                .peek()
+                .is_some_and(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))
+            {
+                chars.next();
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// The valid documents of toml-test's 1.1 list (fetched by
+/// crates/forgo_lib_toml/scripts/fetch-toml-test.sh), or `None` if absent.
+pub fn toml_test_valid() -> Option<Vec<String>> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../forgo_lib_toml/tests/toml-test-data/tests");
+    let names = std::fs::read_to_string(dir.join("files-toml-1.1.0")).ok()?;
+    Some(
+        names
+            .lines()
+            .filter(|l| l.starts_with("valid/") && l.ends_with(".toml"))
+            .filter_map(|n| String::from_utf8(std::fs::read(dir.join(n)).ok()?).ok())
+            .collect(),
+    )
+}
+
+/// Each document truncated, and with one of 17 characters inserted, at a
+/// dozen places each.
+pub fn mutations(docs: &[String]) -> Vec<String> {
+    let edits = [
+        "\"", "'", "=", ".", "[", "]", "{", "}", ",", "#", "\n", " ", "0", "-", ":", "_", "\\",
+    ];
+    let mut out = Vec::new();
+    for doc in docs {
+        let step = (doc.len() / 12).max(1);
+        for i in (0..doc.len()).step_by(step) {
+            if !doc.is_char_boundary(i) {
+                continue;
+            }
+            out.push(doc[..i].to_string());
+            for e in edits {
+                let mut s = doc.clone();
+                s.insert_str(i, e);
+                out.push(s);
+            }
+        }
+    }
+    out
+}
+
+/// Whether a document another crate accepts and forgo_lib_toml rejects is
+/// only TOML with line breaks inside an inline table's key/value pairs
+/// (which TOML forbids): joined up, forgo_lib_toml reads it as they do.
+pub fn only_split_pairs(s: &str, theirs: &Item) -> bool {
+    forgo_lib_toml::Document::parse(&join_pair_lines(s)).is_ok_and(|d| same(&d.to_item(), theirs))
+}

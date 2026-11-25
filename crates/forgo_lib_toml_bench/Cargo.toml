@@ -28,7 +28,7 @@ serde_json = "1"
 taplo = "=0.14.0"
 toml = "=1.2.3"
 toml-span = "=0.7.2"
-toml-spanner = "=1.0.3"
+toml-spanner = { version = "=1.0.3", features = ["to-toml"] }
 toml_edit = "=0.25.21"
 toml_parser = "=1.1.7"
 

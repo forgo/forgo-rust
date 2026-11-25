@@ -30,6 +30,25 @@ fn main() {
         _ => forgo_lib_toml_bench::MANIFEST.to_string(),
     };
     let secs: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+    if args.get(1).map(String::as_str) == Some("walk") {
+        let lock = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/inputs/zed-Cargo.lock"
+        ))
+        .unwrap();
+        let load = forgo_lib_toml_bench::CONTENDERS[0].load;
+        let t = Instant::now();
+        let mut n = 0u64;
+        while t.elapsed() < Duration::from_secs(secs) {
+            black_box(load(black_box(&lock)));
+            n += 1;
+        }
+        println!(
+            "{:.1} MB/s",
+            lock.len() as f64 * n as f64 / t.elapsed().as_secs_f64() / 1e6
+        );
+        return;
+    }
     if args.get(1).map(String::as_str) == Some("edit") {
         let edit = |s: &str| {
             let mut d = forgo_lib_toml::Document::parse(s).unwrap();
