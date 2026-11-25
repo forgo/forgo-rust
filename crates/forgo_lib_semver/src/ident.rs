@@ -23,8 +23,8 @@ use core::str::FromStr;
 /// assert!(b < Prerelease::EMPTY);
 /// # Ok::<(), forgo_lib_semver::Error>(())
 /// ```
-#[derive(Clone, Default, PartialEq, Eq, Hash)]
-pub struct Prerelease(Option<Box<str>>);
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Prerelease(Text);
 
 /// The build metadata of a version: `exp.sha.5114f85` in
 /// `1.0.0+exp.sha.5114f85`. Empty when there is none.
@@ -33,8 +33,51 @@ pub struct Prerelease(Option<Box<str>>);
 /// order, used only to break ties so that sorting is deterministic:
 /// empty first, then identifier by identifier, numbers before others,
 /// numbers by value and then by length (`1 < 01`), others in ASCII order.
-#[derive(Clone, Default, PartialEq, Eq, Hash)]
-pub struct BuildMetadata(Option<Box<str>>);
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct BuildMetadata(Text);
+
+/// Identifiers as text: up to 8 bytes inline (padded with NUL, which
+/// identifiers never contain), longer ones on the heap. Text of 8 bytes or
+/// less is always inline, so the derived `==` and `Hash` compare the text.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum Text {
+    Inline([u8; 8]),
+    Heap(Box<str>),
+}
+
+impl Text {
+    const EMPTY: Text = Text::Inline([0; 8]);
+
+    fn new(s: &str) -> Text {
+        if s.len() <= 8 {
+            let mut b = [0u8; 8];
+            b[..s.len()].copy_from_slice(s.as_bytes());
+            Text::Inline(b)
+        } else {
+            Text::Heap(s.into())
+        }
+    }
+
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        match self {
+            Text::Inline(b) => {
+                let n = b.iter().position(|&c| c == 0).unwrap_or(8);
+                &b[..n]
+            }
+            Text::Heap(s) => s.as_bytes(),
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(self.as_bytes()).expect("identifiers are ASCII")
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        matches!(self, Text::Inline(b) if b[0] == 0)
+    }
+}
 
 /// One identifier of a [`Prerelease`] or [`BuildMetadata`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -117,19 +160,23 @@ pub(crate) fn scan(text: &str, start: usize, part: Part) -> Result<usize, Error>
 }
 
 /// Parse a whole identifier list (`text` is all identifiers).
-fn parse_all(text: &str, part: Part) -> Result<Option<Box<str>>, Error> {
+fn parse_all(text: &str, part: Part) -> Result<Text, Error> {
     if text.is_empty() {
-        return Ok(None);
+        return Ok(Text::EMPTY);
     }
     let end = scan(text, 0, part)?;
     match text[end..].chars().next() {
-        None => Ok(Some(text.into())),
+        None => Ok(Text::new(text)),
         Some(c) => Err(Error::new(ErrorKind::UnexpectedChar(part, c), end)),
     }
 }
 
-fn cmp_pre_ident(a: &str, b: &str) -> Ordering {
-    match (is_numeric(a), is_numeric(b)) {
+fn numeric(s: &[u8]) -> bool {
+    s.iter().all(u8::is_ascii_digit)
+}
+
+fn cmp_pre_ident(a: &[u8], b: &[u8]) -> Ordering {
+    match (numeric(a), numeric(b)) {
         // No leading zeros: a longer number is larger.
         (true, true) => a.len().cmp(&b.len()).then_with(|| a.cmp(b)),
         (true, false) => Ordering::Less,
@@ -138,10 +185,10 @@ fn cmp_pre_ident(a: &str, b: &str) -> Ordering {
     }
 }
 
-fn cmp_build_ident(a: &str, b: &str) -> Ordering {
-    match (is_numeric(a), is_numeric(b)) {
+fn cmp_build_ident(a: &[u8], b: &[u8]) -> Ordering {
+    match (numeric(a), numeric(b)) {
         (true, true) => {
-            let (x, y) = (a.trim_start_matches('0'), b.trim_start_matches('0'));
+            let (x, y) = (trim_zeros(a), trim_zeros(b));
             x.len()
                 .cmp(&y.len())
                 .then_with(|| x.cmp(y))
@@ -153,13 +200,18 @@ fn cmp_build_ident(a: &str, b: &str) -> Ordering {
     }
 }
 
+fn trim_zeros(s: &[u8]) -> &[u8] {
+    let z = s.iter().take_while(|&&c| c == b'0').count();
+    &s[z..]
+}
+
 /// Compare identifier lists one identifier at a time; a list that is a
 /// prefix of the other is less.
-fn cmp_lists(a: &str, b: &str, ident: fn(&str, &str) -> Ordering) -> Ordering {
+fn cmp_lists(a: &[u8], b: &[u8], ident: fn(&[u8], &[u8]) -> Ordering) -> Ordering {
     if a == b {
         return Ordering::Equal;
     }
-    let (mut x, mut y) = (a.split('.'), b.split('.'));
+    let (mut x, mut y) = (a.split(|&c| c == b'.'), b.split(|&c| c == b'.'));
     loop {
         match (x.next(), y.next()) {
             (None, None) => return Ordering::Equal,
@@ -177,7 +229,7 @@ macro_rules! identifier_list {
     ($t:ident, $part:expr) => {
         impl $t {
             /// None: the empty list.
-            pub const EMPTY: $t = $t(None);
+            pub const EMPTY: $t = $t(Text::EMPTY);
 
             /// Parse dot-separated identifiers (without the leading `-` or
             /// `+`). The empty string gives [`Self::EMPTY`].
@@ -187,26 +239,36 @@ macro_rules! identifier_list {
 
             /// Identifiers already checked by the caller.
             pub(crate) fn from_valid(text: &str) -> $t {
-                $t(if text.is_empty() {
-                    None
-                } else {
-                    Some(text.into())
-                })
+                $t(Text::new(text))
             }
 
             /// Whether there are no identifiers.
+            #[inline]
             pub fn is_empty(&self) -> bool {
-                self.0.is_none()
+                self.0.is_empty()
             }
 
             /// The identifiers as written, joined by dots (`""` when empty).
             pub fn as_str(&self) -> &str {
-                self.0.as_deref().unwrap_or("")
+                self.0.as_str()
+            }
+
+            /// [`Self::as_str`] as bytes, without checking UTF-8.
+            #[inline]
+            #[allow(dead_code)] // generated for both lists; used for one
+            pub(crate) fn bytes(&self) -> &[u8] {
+                self.0.as_bytes()
             }
 
             /// The identifiers, in order.
             pub fn identifiers(&self) -> Identifiers<'_> {
-                Identifiers(self.0.as_deref().map(|s| s.split('.')))
+                Identifiers((!self.is_empty()).then(|| self.as_str().split('.')))
+            }
+        }
+
+        impl Default for $t {
+            fn default() -> $t {
+                $t::EMPTY
             }
         }
 
@@ -242,24 +304,26 @@ identifier_list!(Prerelease, Part::Pre);
 identifier_list!(BuildMetadata, Part::Build);
 
 impl Ord for Prerelease {
+    #[inline]
     fn cmp(&self, other: &Prerelease) -> Ordering {
-        match (&self.0, &other.0) {
-            (None, None) => Ordering::Equal,
+        match (self.is_empty(), other.is_empty()) {
+            (true, true) => Ordering::Equal,
             // A release is greater than any pre-release of it.
-            (None, Some(_)) => Ordering::Greater,
-            (Some(_), None) => Ordering::Less,
-            (Some(a), Some(b)) => cmp_lists(a, b, cmp_pre_ident),
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => cmp_lists(self.0.as_bytes(), other.0.as_bytes(), cmp_pre_ident),
         }
     }
 }
 
 impl Ord for BuildMetadata {
+    #[inline]
     fn cmp(&self, other: &BuildMetadata) -> Ordering {
-        match (&self.0, &other.0) {
-            (None, None) => Ordering::Equal,
-            (None, Some(_)) => Ordering::Less,
-            (Some(_), None) => Ordering::Greater,
-            (Some(a), Some(b)) => cmp_lists(a, b, cmp_build_ident),
+        match (self.is_empty(), other.is_empty()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => cmp_lists(self.0.as_bytes(), other.0.as_bytes(), cmp_build_ident),
         }
     }
 }

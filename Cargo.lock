@@ -10,6 +10,7 @@ version = "0.0.0"
 name = "forgo_dev"
 version = "0.1.0"
 dependencies = [
+ "forgo_lib_semver",
  "forgo_lib_yaml",
 ]
 

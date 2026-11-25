@@ -58,6 +58,8 @@ pub enum Command {
         /// Apply the changes; without it, only report them.
         yes: bool,
     },
+    /// `semver ...`: the arguments after `semver`.
+    Semver(Vec<String>),
     /// `help`, `--help` or `-h`.
     Help,
 }
@@ -118,6 +120,7 @@ pub fn parse_args(args: &[String]) -> Result<Command> {
                 yes,
             })
         }
+        "semver" => Ok(Command::Semver(args[1..].to_vec())),
         other => usage(&format!("unknown command `{other}`")),
     }
 }

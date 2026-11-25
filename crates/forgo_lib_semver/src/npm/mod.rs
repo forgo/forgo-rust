@@ -32,6 +32,7 @@
 // by step, with node-semver's regular expressions (`patterns`, generated
 // from its source) run by an engine with JavaScript's semantics (`regex`).
 
+mod fast;
 pub(crate) mod patterns;
 pub(crate) mod regex;
 mod trim;
@@ -263,6 +264,7 @@ impl Comparator {
     }
 
     /// `comparator.test(version)`.
+    #[inline]
     pub(crate) fn test(&self, v: &Version) -> bool {
         let Some(c) = &self.version else {
             return true;
@@ -280,7 +282,7 @@ impl Comparator {
     fn is_null_set(&self) -> bool {
         self.op == Op::Lt
             && self.version.as_ref().is_some_and(|v| {
-                v.major.is_zero() && v.minor.is_zero() && v.patch.is_zero() && v.pre.as_str() == "0"
+                v.major.is_zero() && v.minor.is_zero() && v.patch.is_zero() && v.pre.bytes() == b"0"
             })
     }
 
@@ -294,8 +296,17 @@ impl Comparator {
 // ---------------------------------------------------------------------------
 
 impl Range {
-    /// `new Range(text, options)`.
+    /// `new Range(text, options)`: the fast path for ordinary ranges, the
+    /// full pipeline for the rest.
     pub(crate) fn parse(text: &str, options: Options) -> Result<Range, Invalid> {
+        if let Some(r) = fast::parse(text, options) {
+            return Ok(r);
+        }
+        Range::parse_full(text, options)
+    }
+
+    /// `new Range(text, options)`, always through the full pipeline.
+    pub(crate) fn parse_full(text: &str, options: Options) -> Result<Range, Invalid> {
         Range::parse_keyed(text, options).map(|(r, _)| r)
     }
 
@@ -314,22 +325,12 @@ impl Range {
         if sets.is_empty() {
             return Err(Invalid::Range(raw));
         }
-        if sets.len() > 1 {
-            let first = sets[0].clone();
-            sets.retain(|s| !s.0[0].is_null_set());
-            if sets.is_empty() {
-                sets.push(first);
-            } else if sets.len() > 1
-                && let Some(any) = sets.iter().find(|s| s.0.len() == 1 && s.0[0].is_any())
-            {
-                sets = vec![any.clone()];
-            }
-        }
-        let (sets, keys) = sets.into_iter().unzip();
+        let (sets, keys) = normalize(sets, |s| &s.0).into_iter().unzip();
         Ok((Range { sets, options }, keys))
     }
 
     /// `range.test(version)`.
+    #[inline]
     pub(crate) fn test(&self, v: &Version) -> bool {
         self.sets.iter().any(|set| test_set(set, v, self.options))
     }
@@ -383,9 +384,37 @@ impl Range {
     }
 }
 
+/// The end of node-semver's `Range` constructor: with several sets, drop
+/// those that match nothing (unless all do), and if one matches anything,
+/// keep just that one.
+fn normalize<T: Clone>(mut sets: Vec<T>, comparators: impl Fn(&T) -> &Vec<Comparator>) -> Vec<T> {
+    if sets.len() > 1 {
+        if sets.iter().all(|s| comparators(s)[0].is_null_set()) {
+            sets.truncate(1);
+        } else {
+            sets.retain(|s| !comparators(s)[0].is_null_set());
+        }
+        if sets.len() > 1
+            && let Some(any) = sets.iter().find(|s| {
+                let c = comparators(s);
+                c.len() == 1 && c[0].is_any()
+            })
+        {
+            sets = vec![any.clone()];
+        }
+    }
+    sets
+}
+
+/// [`normalize`] for plain sets.
+pub(crate) fn normalize_sets(sets: Vec<Vec<Comparator>>) -> Vec<Vec<Comparator>> {
+    normalize(sets, |s| s)
+}
+
 /// `testSet`: every comparator matches, and a pre-release version is
 /// allowed only by a comparator with a pre-release on the same
 /// `major.minor.patch` (unless `includePrerelease`).
+#[inline]
 pub(crate) fn test_set(set: &[Comparator], v: &Version, options: Options) -> bool {
     if !set.iter().all(|c| c.test(v)) {
         return false;

@@ -42,6 +42,34 @@ pub(crate) struct Comparator {
     pub(crate) pre: Prerelease,
 }
 
+fn fail((kind, pos): crate::version::Fail) -> Error {
+    Error::new(kind, pos)
+}
+
+/// A number at `i`: up to 19 digits without a leading zero (fits a
+/// `u64`) on a fast path, anything else through [`number`], which also
+/// reports errors.
+#[inline]
+fn num(text: &str, i: &mut usize, part: Part) -> Result<Num, Error> {
+    let b = text.as_bytes();
+    let start = *i;
+    let mut n = 0u64;
+    let mut j = start;
+    while let Some(&c) = b.get(j) {
+        if !c.is_ascii_digit() || j - start == 19 {
+            break;
+        }
+        n = n * 10 + u64::from(c - b'0');
+        j += 1;
+    }
+    let len = j - start;
+    if len > 0 && !(len > 1 && b[start] == b'0') && !b.get(j).is_some_and(u8::is_ascii_digit) {
+        *i = j;
+        return Ok(Num::new(n));
+    }
+    number(text, i, part).map_err(fail)
+}
+
 fn skip_spaces(text: &str, mut i: usize) -> usize {
     while text.as_bytes().get(i) == Some(&b' ') {
         i += 1;
@@ -92,7 +120,7 @@ pub(crate) fn parse(text: &str) -> Result<Vec<Comparator>, Error> {
             Some(_) => Err(Error::new(ErrorKind::UnexpectedAfterWildcard, rest)),
         };
     }
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(1 + text.bytes().filter(|&b| b == b',').count());
     let mut i = start;
     loop {
         let (c, part, next) = match comparator(text, i) {
@@ -129,7 +157,7 @@ fn comparator(text: &str, start: usize) -> Result<(Comparator, Part, usize), Err
     let default_op = len == 0;
     let mut i = skip_spaces(text, start + len);
     let mut part = Part::Major;
-    let major = number(text, &mut i, Part::Major)?;
+    let major = num(text, &mut i, Part::Major)?;
     let mut has_wildcard = false;
     let mut minor = None;
     if text.as_bytes().get(i) == Some(&b'.') {
@@ -142,7 +170,7 @@ fn comparator(text: &str, start: usize) -> Result<(Comparator, Part, usize), Err
             }
             i += 1;
         } else {
-            minor = Some(number(text, &mut i, Part::Minor)?);
+            minor = Some(num(text, &mut i, Part::Minor)?);
         }
     }
     let mut patch = None;
@@ -157,7 +185,7 @@ fn comparator(text: &str, start: usize) -> Result<(Comparator, Part, usize), Err
         } else if has_wildcard {
             return Err(Error::new(ErrorKind::UnexpectedAfterWildcard, i));
         } else {
-            patch = Some(number(text, &mut i, Part::Patch)?);
+            patch = Some(num(text, &mut i, Part::Patch)?);
         }
     }
     let mut pre = Prerelease::EMPTY;
@@ -193,6 +221,7 @@ fn comparator(text: &str, start: usize) -> Result<(Comparator, Part, usize), Err
 /// Whether `v` matches every comparator, and is either a release or a
 /// pre-release of a `major.minor.patch` that a comparator with a
 /// pre-release names.
+#[inline]
 pub(crate) fn matches(comparators: &[Comparator], v: &Version) -> bool {
     if !comparators.iter().all(|c| matches_op(c, v)) {
         return false;
@@ -200,6 +229,7 @@ pub(crate) fn matches(comparators: &[Comparator], v: &Version) -> bool {
     v.pre.is_empty() || comparators.iter().any(|c| pre_is_compatible(c, v))
 }
 
+#[inline]
 fn pre_is_compatible(c: &Comparator, v: &Version) -> bool {
     c.major == v.major
         && c.minor.as_ref() == Some(&v.minor)
@@ -207,6 +237,7 @@ fn pre_is_compatible(c: &Comparator, v: &Version) -> bool {
         && !c.pre.is_empty()
 }
 
+#[inline]
 fn matches_op(c: &Comparator, v: &Version) -> bool {
     match c.op {
         Op::Exact | Op::Wildcard => exact(c, v),
@@ -219,6 +250,7 @@ fn matches_op(c: &Comparator, v: &Version) -> bool {
     }
 }
 
+#[inline]
 fn exact(c: &Comparator, v: &Version) -> bool {
     v.major == c.major
         && c.minor.as_ref().is_none_or(|m| v.minor == *m)
@@ -226,6 +258,7 @@ fn exact(c: &Comparator, v: &Version) -> bool {
         && v.pre == c.pre
 }
 
+#[inline]
 fn greater(c: &Comparator, v: &Version) -> bool {
     if v.major != c.major {
         return v.major > c.major;
@@ -241,6 +274,7 @@ fn greater(c: &Comparator, v: &Version) -> bool {
     v.pre > c.pre
 }
 
+#[inline]
 fn less(c: &Comparator, v: &Version) -> bool {
     if v.major != c.major {
         return v.major < c.major;
@@ -256,6 +290,7 @@ fn less(c: &Comparator, v: &Version) -> bool {
     v.pre < c.pre
 }
 
+#[inline]
 fn tilde(c: &Comparator, v: &Version) -> bool {
     if v.major != c.major {
         return false;
@@ -273,6 +308,7 @@ fn tilde(c: &Comparator, v: &Version) -> bool {
     v.pre >= c.pre
 }
 
+#[inline]
 fn caret(c: &Comparator, v: &Version) -> bool {
     if v.major != c.major {
         return false;

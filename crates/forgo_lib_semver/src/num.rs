@@ -33,8 +33,9 @@ pub struct Num(Repr);
 enum Repr {
     Small(u64),
     /// The decimal digits of a value above `u64::MAX`, without leading
-    /// zeros. Boxed twice to keep `Num` at 16 bytes.
-    Big(Box<Box<str>>),
+    /// zeros. (`Small` fits in the bytes beside the pointer's niche, so
+    /// `Num` is 16 bytes.)
+    Big(Box<str>),
 }
 
 /// `u64::MAX` in decimal.
@@ -50,6 +51,7 @@ impl Num {
     }
 
     /// The value, if it fits in a `u64`.
+    #[inline]
     pub fn to_u64(&self) -> Option<u64> {
         match self.0 {
             Repr::Small(n) => Some(n),
@@ -58,6 +60,7 @@ impl Num {
     }
 
     /// Whether this is zero.
+    #[inline]
     pub fn is_zero(&self) -> bool {
         matches!(self.0, Repr::Small(0))
     }
@@ -67,7 +70,7 @@ impl Num {
         match &self.0 {
             Repr::Small(n) => match n.checked_add(1) {
                 Some(m) => Num::new(m),
-                None => Num(Repr::Big(Box::new("18446744073709551616".into()))),
+                None => Num(Repr::Big("18446744073709551616".into())),
             },
             Repr::Big(digits) => {
                 let mut d: alloc::vec::Vec<u8> = digits.as_bytes().to_vec();
@@ -86,7 +89,7 @@ impl Num {
                     }
                 }
                 let s = String::from_utf8(d).expect("ASCII digits");
-                Num(Repr::Big(Box::new(s.into_boxed_str())))
+                Num(Repr::Big(s.into_boxed_str()))
             }
         }
     }
@@ -105,7 +108,7 @@ impl Num {
             }
             Num::new(n)
         } else {
-            Num(Repr::Big(Box::new(digits.into())))
+            Num(Repr::Big(digits.into()))
         }
     }
 
@@ -124,6 +127,7 @@ impl Default for Num {
 }
 
 impl Ord for Num {
+    #[inline]
     fn cmp(&self, other: &Num) -> Ordering {
         match (&self.0, &other.0) {
             (Repr::Small(a), Repr::Small(b)) => a.cmp(b),
@@ -135,12 +139,14 @@ impl Ord for Num {
 }
 
 impl PartialOrd for Num {
+    #[inline]
     fn partial_cmp(&self, other: &Num) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl PartialEq<u64> for Num {
+    #[inline]
     fn eq(&self, other: &u64) -> bool {
         matches!(self.0, Repr::Small(n) if n == *other)
     }

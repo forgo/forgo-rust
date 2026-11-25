@@ -138,6 +138,49 @@ gives the same answers, and [`Req`] the exact ones. For example,
 `>=1 <3` is a subset of `>=1 <2 || >=2 <3`, but node-semver says it
 isn't, because neither alternative covers it alone.
 
+## How it compares
+
+The other Rust semver crates, measured on November 24, 2026 (full report
+and method: [RESULTS.md](../forgo_lib_semver_bench/RESULTS.md)).
+
+**Compliance.** Versions are checked against the SemVer 2.0.0 BNF on
+40,000 generated and mutated inputs. npm ranges are checked against
+node-semver 7.8.6 itself, on 4,000 random ranges × 24 versions. Cargo
+requirements are checked against the `semver` crate (Cargo's parser), on
+20,000 random requirements × 24 versions.
+
+| Crate | SemVer (BNF) | Above `u64` | npm: same verdict | npm: same `satisfies` | Cargo: same results |
+|---|---:|:---:|---:|---:|---:|
+| **forgo_lib_semver** | **100%** | **yes** | **100%** | **100%** | **100%** |
+| semver 1.0.28 | 86.0% | no | | | (reference) |
+| js-semver 1.0.2 | 72.0% | no | 95.1% | 100% | |
+| nodejs-semver 7.0.0 | 62.5% | no | 83.2% | 93.5% | |
+| node-semver 2.2.0 | 70.5% | no | 80.0% | 93.8% | |
+| deno_semver 0.10.1 | 83.1% | no | 88.1% | 98.9% | |
+| semver_rs 0.2.0 | 38.2% | no | 99.3% | 100% | |
+
+The npm crates read npm's grammar, which accepts `v1.2.3` and other forms
+the specification doesn't. The SemVer column measures distance from the
+specification, not correctness of npm's grammar.
+
+**Performance** (Apple M-series, Rust 1.97; lower is better):
+
+| Task | forgo_lib_semver | Fastest other |
+|---|---:|---:|
+| parse a version (ns) | **24.4** | 25.1 (semver) |
+| allocations per version | **0.09** | 0.09 (semver, js-semver) |
+| parse a Cargo requirement (ns) | 36.6 | 34.6 (semver) |
+| match a Cargo requirement (ns) | 4.5 | 4.0 (semver) |
+| parse an npm range (ns) | 154 | 75.5 (js-semver) |
+| match an npm range (ns) | 9.0 | 5.8 (node-semver) |
+| sort 100,000 versions (ms) | 11.35 | 8.60 (semver) |
+
+Version parsing is the fastest measured. Elsewhere the cost of exactness
+shows: numbers of any size make each comparison a little slower, and a
+`Version` is 80 bytes against `semver`'s 40. npm ranges take a fast path
+for ordinary ranges, and node-semver's full regular-expression pipeline
+for the rest.
+
 ## Errors
 
 ```rust

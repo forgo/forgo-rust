@@ -1,0 +1,37 @@
+# Benchmarks and comparisons of forgo_lib_semver with other Rust semver
+# crates (and, for npm's syntax, node-semver itself).
+#
+# Not a member of the root workspace (see the root Cargo.toml `exclude`):
+# it has its own [workspace] and Cargo.lock, so the crates it compares
+# against never appear in the main lockfile. forgo_lib_semver itself stays
+# dependency-free.
+#
+#   cargo run --release --manifest-path crates/forgo_lib_semver_bench/Cargo.toml --bin report
+#
+# See README.md for what the report measures.
+
+[package]
+name = "forgo_lib_semver_bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[workspace]
+
+[dependencies]
+forgo_lib_semver = { path = "../forgo_lib_semver" }
+# Reads node-semver's answers (JSON) for the npm comparison.
+forgo_lib_yaml = { path = "../forgo_lib_yaml" }
+deno_semver = "=0.10.1"
+js-semver = "=1.0.2"
+lenient_semver = "=0.4.2"
+node-semver = "=2.2.0"
+nodejs-semver = "=7.0.0"
+semver = "=1.0.28"
+semver-parser = "=0.10.3"
+semver_rs = "=0.2.0"
+versions = "=8.0.1"
+
+[profile.release]
+debug = 1

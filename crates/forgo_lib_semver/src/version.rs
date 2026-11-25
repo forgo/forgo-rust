@@ -72,50 +72,7 @@ impl Version {
     /// assert!(Version::parse("1.2.3--").is_ok()); // `-` is an identifier
     /// ```
     pub fn parse(text: &str) -> Result<Version, Error> {
-        let b = text.as_bytes();
-        if b.is_empty() {
-            return Err(Error::new(ErrorKind::Empty, 0));
-        }
-        let mut i = 0;
-        let major = number(text, &mut i, Part::Major)?;
-        dot(text, &mut i, Part::Major)?;
-        let minor = number(text, &mut i, Part::Minor)?;
-        dot(text, &mut i, Part::Minor)?;
-        let patch = number(text, &mut i, Part::Patch)?;
-        let mut v = Version {
-            major,
-            minor,
-            patch,
-            pre: Prerelease::EMPTY,
-            build: BuildMetadata::EMPTY,
-        };
-        if i == b.len() {
-            return Ok(v);
-        }
-        let mut last = Part::Patch;
-        if b[i] == b'-' {
-            let end = ident::scan(text, i + 1, Part::Pre)?;
-            v.pre = Prerelease::from_valid(&text[i + 1..end]);
-            i = end;
-            last = Part::Pre;
-        }
-        if b.get(i) == Some(&b'+') {
-            let end = ident::scan(text, i + 1, Part::Build)?;
-            v.build = BuildMetadata::from_valid(&text[i + 1..end]);
-            i = end;
-            last = Part::Build;
-        }
-        match text[i..].chars().next() {
-            None => Ok(v),
-            Some(c) => Err(Error::new(
-                match last {
-                    // Inside identifiers: a character that can't be in one.
-                    Part::Pre | Part::Build => ErrorKind::UnexpectedChar(last, c),
-                    _ => ErrorKind::UnexpectedCharAfter(last, c),
-                },
-                i,
-            )),
-        }
+        parse_fast(text).map_err(|(kind, pos)| Error::new(kind, pos))
     }
 
     /// Parse a version the way npm does in loose mode: surrounding
@@ -218,6 +175,7 @@ impl Version {
     }
 
     /// Whether this is a pre-release (has pre-release identifiers).
+    #[inline]
     pub fn is_prerelease(&self) -> bool {
         !self.pre.is_empty()
     }
@@ -235,6 +193,7 @@ impl Version {
     /// assert_ne!(a, b);
     /// # Ok::<(), forgo_lib_semver::Error>(())
     /// ```
+    #[inline]
     pub fn cmp_precedence(&self, other: &Version) -> Ordering {
         self.major
             .cmp(&other.major)
@@ -245,6 +204,7 @@ impl Version {
 
     /// Whether the two versions have the same precedence (they differ at
     /// most in build metadata).
+    #[inline]
     pub fn precedence_eq(&self, other: &Version) -> bool {
         self.major == other.major
             && self.minor == other.minor
@@ -253,6 +213,7 @@ impl Version {
     }
 
     /// Whether `major.minor.patch` are equal.
+    #[inline]
     pub(crate) fn same_core(&self, other: &Version) -> bool {
         self.major == other.major && self.minor == other.minor && self.patch == other.patch
     }
@@ -303,8 +264,100 @@ pub enum Bump<'a> {
     Release,
 }
 
+/// A parse failure while scanning: cheap to pass around (no heap, no drop
+/// glue); turned into an [`Error`] once, at the API boundary.
+pub(crate) type Fail = (ErrorKind, usize);
+
+/// `major.minor.patch` when each is at most 19 digits (so it fits a
+/// `u64`) without a leading zero: the numbers and where the core ends.
+/// `None` for anything else, which [`number`] then reports precisely.
+#[inline]
+fn core_fast(b: &[u8]) -> Option<([u64; 3], usize)> {
+    let mut nums = [0u64; 3];
+    let mut i = 0;
+    for (k, slot) in nums.iter_mut().enumerate() {
+        let start = i;
+        let mut n = 0u64;
+        while let Some(&c) = b.get(i) {
+            if !c.is_ascii_digit() || i - start == 19 {
+                break;
+            }
+            n = n * 10 + u64::from(c - b'0');
+            i += 1;
+        }
+        let len = i - start;
+        if len == 0 || (len > 1 && b[start] == b'0') || b.get(i).is_some_and(u8::is_ascii_digit) {
+            return None;
+        }
+        *slot = n;
+        if k < 2 {
+            if b.get(i) != Some(&b'.') {
+                return None;
+            }
+            i += 1;
+        }
+    }
+    Some((nums, i))
+}
+
+/// [`Version::parse`], failing with a [`Fail`].
+#[inline]
+fn parse_fast(text: &str) -> Result<Version, Fail> {
+    let b = text.as_bytes();
+    if b.is_empty() {
+        return Err((ErrorKind::Empty, 0));
+    }
+    let (mut v, mut i) = match core_fast(b) {
+        Some(([major, minor, patch], i)) => (Version::new(major, minor, patch), i),
+        None => {
+            let mut i = 0;
+            let major = number(text, &mut i, Part::Major)?;
+            dot(text, &mut i, Part::Major)?;
+            let minor = number(text, &mut i, Part::Minor)?;
+            dot(text, &mut i, Part::Minor)?;
+            let patch = number(text, &mut i, Part::Patch)?;
+            let v = Version {
+                major,
+                minor,
+                patch,
+                pre: Prerelease::EMPTY,
+                build: BuildMetadata::EMPTY,
+            };
+            (v, i)
+        }
+    };
+    if i == b.len() {
+        return Ok(v);
+    }
+    let mut last = Part::Patch;
+    if b[i] == b'-' {
+        let end = ident::scan(text, i + 1, Part::Pre).map_err(|e| (e.kind(), e.pos()))?;
+        v.pre = Prerelease::from_valid(&text[i + 1..end]);
+        i = end;
+        last = Part::Pre;
+    }
+    if b.get(i) == Some(&b'+') {
+        let end = ident::scan(text, i + 1, Part::Build).map_err(|e| (e.kind(), e.pos()))?;
+        v.build = BuildMetadata::from_valid(&text[i + 1..end]);
+        i = end;
+        last = Part::Build;
+    }
+    match text[i..].chars().next() {
+        None => Ok(v),
+        Some(c) => Err((
+            match last {
+                // Inside identifiers: a character that can't be in one.
+                Part::Pre | Part::Build => ErrorKind::UnexpectedChar(last, c),
+                _ => ErrorKind::UnexpectedCharAfter(last, c),
+            },
+            i,
+        )),
+    }
+}
+
 /// A number without leading zeros, of any size.
-pub(crate) fn number(text: &str, i: &mut usize, part: Part) -> Result<Num, Error> {
+#[inline]
+pub(crate) fn number(text: &str, i: &mut usize, part: Part) -> Result<Num, Fail> {
     let b = text.as_bytes();
     let start = *i;
     let mut n = 0u64;
@@ -327,12 +380,12 @@ pub(crate) fn number(text: &str, i: &mut usize, part: Part) -> Result<Num, Error
     }
     if j == start {
         return Err(match text[start..].chars().next() {
-            Some(c) => Error::new(ErrorKind::UnexpectedChar(part, c), start),
-            None => Error::new(ErrorKind::UnexpectedEnd(part), start),
+            Some(c) => (ErrorKind::UnexpectedChar(part, c), start),
+            None => (ErrorKind::UnexpectedEnd(part), start),
         });
     }
     if b[start] == b'0' && j - start > 1 {
-        return Err(Error::new(ErrorKind::LeadingZero(part), start));
+        return Err((ErrorKind::LeadingZero(part), start));
     }
     *i = j;
     Ok(if overflow {
@@ -343,7 +396,8 @@ pub(crate) fn number(text: &str, i: &mut usize, part: Part) -> Result<Num, Error
 }
 
 /// The `.` after `part`.
-fn dot(text: &str, i: &mut usize, part: Part) -> Result<(), Error> {
+#[inline]
+fn dot(text: &str, i: &mut usize, part: Part) -> Result<(), Fail> {
     match text.as_bytes().get(*i) {
         Some(b'.') => {
             *i += 1;
@@ -355,11 +409,11 @@ fn dot(text: &str, i: &mut usize, part: Part) -> Result<(), Error> {
             } else {
                 Part::Patch
             };
-            Err(Error::new(ErrorKind::UnexpectedEnd(next), *i))
+            Err((ErrorKind::UnexpectedEnd(next), *i))
         }
         Some(_) => {
             let c = text[*i..].chars().next().unwrap_or('\0');
-            Err(Error::new(ErrorKind::UnexpectedCharAfter(part, c), *i))
+            Err((ErrorKind::UnexpectedCharAfter(part, c), *i))
         }
     }
 }
@@ -373,6 +427,7 @@ impl FromStr for Version {
 }
 
 impl Ord for Version {
+    #[inline]
     fn cmp(&self, other: &Version) -> Ordering {
         self.cmp_precedence(other)
             .then_with(|| self.build.cmp(&other.build))
@@ -380,6 +435,7 @@ impl Ord for Version {
 }
 
 impl PartialOrd for Version {
+    #[inline]
     fn partial_cmp(&self, other: &Version) -> Option<Ordering> {
         Some(self.cmp(other))
     }

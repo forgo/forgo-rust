@@ -1,4 +1,4 @@
-//! Errors: a usage mistake (shown with the help text) or a failure.
+//! Errors: a usage mistake, a failure, or a check that didn't pass.
 
 use std::fmt;
 
@@ -10,6 +10,10 @@ pub enum Error {
     /// The command can't be carried out; nothing was changed unless the
     /// message says otherwise.
     Failed(String),
+    /// The command ran, and what it checked doesn't hold (an invalid
+    /// version, a version that doesn't match): its report, printed as
+    /// output, with exit code 1.
+    Unmet(String),
 }
 
 impl Error {
@@ -22,7 +26,7 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Usage(m) | Error::Failed(m) => f.write_str(m),
+            Error::Usage(m) | Error::Failed(m) | Error::Unmet(m) => f.write_str(m),
         }
     }
 }

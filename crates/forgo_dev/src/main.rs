@@ -10,6 +10,10 @@ fn main() -> ExitCode {
             print!("{report}");
             ExitCode::SUCCESS
         }
+        Err(forgo_dev::Error::Unmet(report)) => {
+            print!("{report}");
+            ExitCode::FAILURE
+        }
         Err(e) => {
             eprintln!("error: {e}");
             if e.is_usage() {

@@ -5,7 +5,6 @@ use crate::error::Error;
 use crate::npm::{self, NpmOptions};
 use crate::set::{self, Piece};
 use crate::version::Version;
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -49,7 +48,6 @@ use core::fmt;
 #[derive(Clone)]
 pub struct Req {
     kind: Kind,
-    text: Box<str>,
 }
 
 /// Equal when parsed the same (in the same syntax): `>=1.0` equals
@@ -103,7 +101,6 @@ impl Req {
     pub fn cargo(text: &str) -> Result<Req, Error> {
         Ok(Req {
             kind: Kind::Cargo(cargo::parse(text)?),
-            text: text.into(),
         })
     }
 
@@ -126,7 +123,6 @@ impl Req {
         let range = npm::Range::parse(text, options.internal())?;
         Ok(Req {
             kind: Kind::Npm(range),
-            text: text.into(),
         })
     }
 
@@ -138,13 +134,9 @@ impl Req {
         }
     }
 
-    /// The requirement as it was written.
-    pub fn as_str(&self) -> &str {
-        &self.text
-    }
-
     /// Whether `version` meets the requirement (build metadata doesn't
     /// matter).
+    #[inline]
     pub fn matches(&self, version: &Version) -> bool {
         match &self.kind {
             Kind::Cargo(c) => cargo::matches(c, version),
@@ -314,10 +306,8 @@ impl Req {
                         i += 1;
                     }
                 }
-                let text = alloc::format!("{}", CargoDisplay(&keep));
                 Req {
                     kind: Kind::Cargo(keep),
-                    text: text.into(),
                 }
             }
             Kind::Npm(range) => {
@@ -346,11 +336,7 @@ impl Req {
                         }
                     }
                 }
-                let text = r.range_string();
-                Req {
-                    kind: Kind::Npm(r),
-                    text: text.into(),
-                }
+                Req { kind: Kind::Npm(r) }
             }
         }
     }
@@ -382,14 +368,10 @@ impl fmt::Display for Req {
 
 impl fmt::Debug for Req {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Req::{}({:?})",
-            match self.dialect() {
-                Dialect::Cargo => "cargo",
-                Dialect::Npm => "npm",
-            },
-            self.text
-        )
+        let dialect = match self.dialect() {
+            Dialect::Cargo => "cargo",
+            Dialect::Npm => "npm",
+        };
+        write!(f, "Req::{dialect}({:?})", alloc::format!("{self}"))
     }
 }

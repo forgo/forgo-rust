@@ -23,6 +23,7 @@ pub mod error;
 pub mod fsx;
 pub mod metadata;
 pub mod names;
+pub mod semver;
 pub mod templates;
 pub mod workflows;
 pub mod workspace;
@@ -38,6 +39,7 @@ cargo x: developer tools for the forgo-rust workspace
 Usage:
   cargo x new <lib|bin|wasm> <name> [--public]
   cargo x rm [<lib|bin|wasm>] <name> [--yes]
+  cargo x semver <command> ...
   cargo x help
 
 new   Create crates/<name> (Cargo.toml, README.md and a source file) and add
@@ -50,6 +52,8 @@ rm    Remove a crate: the reverse of `new`. Without --yes (-y), only shows
       what would change. Refuses forgo_dev, crates that aren't workspace
       members, crates other crates depend on, and crates with uncommitted
       changes.
+semver Versions and requirements: validate, explain, compare, sort,
+      bump, matches, max, min (`cargo x semver help`).
 
 Crate names use a-z, 0-9 and _, and start with a letter.";
 
@@ -60,5 +64,6 @@ pub fn run(args: &[String], root: &Path) -> Result<String> {
         cli::Command::Help => Ok(format!("{HELP}\n")),
         cli::Command::New { kind, name, public } => commands::new_crate(root, kind, &name, public),
         cli::Command::Rm { kind, name, yes } => commands::remove_crate(root, kind, &name, yes),
+        cli::Command::Semver(args) => semver::run(&args),
     }
 }
